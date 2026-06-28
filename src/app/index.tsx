@@ -1,8 +1,8 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -18,8 +18,10 @@ import { getMe, login, register } from "../api/authApi";
 import { getToken, removeToken } from "../api/client";
 
 type AuthMode = "login" | "register";
+type SnackbarType = "success" | "error" | "info";
 
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
 
   const [mode, setMode] = useState<AuthMode>("login");
@@ -30,11 +32,36 @@ export default function HomeScreen() {
   const [checkingToken, setCheckingToken] = useState(true);
   const [alreadyLoggedIn, setAlreadyLoggedIn] = useState(false);
 
+  const [snackbar, setSnackbar] = useState<{
+    visible: boolean;
+    message: string;
+    type: SnackbarType;
+  }>({
+    visible: false,
+    message: "",
+    type: "info",
+  });
+
   const isRegister = mode === "register";
 
   useEffect(() => {
     checkSavedLogin();
   }, []);
+
+  function showSnackbar(message: string, type: SnackbarType = "info") {
+    setSnackbar({
+      visible: true,
+      message,
+      type,
+    });
+
+    setTimeout(() => {
+      setSnackbar((current) => ({
+        ...current,
+        visible: false,
+      }));
+    }, 3000);
+  }
 
   async function checkSavedLogin() {
     try {
@@ -59,30 +86,33 @@ export default function HomeScreen() {
 
   async function handleSignOut() {
     await removeToken();
+
     setAlreadyLoggedIn(false);
     setIqamaId("");
     setPassword("");
     setMode("login");
+
+    showSnackbar(t("auth.signedOut"), "success");
   }
 
   function validateForm() {
     if (!iqamaId.trim()) {
-      Alert.alert("Missing Iqama ID", "Please enter your Iqama ID.");
+      showSnackbar(t("auth.missingIqamaMessage"), "error");
       return false;
     }
 
     if (iqamaId.trim().length < 5) {
-      Alert.alert("Invalid Iqama ID", "Please enter a valid Iqama ID.");
+      showSnackbar(t("auth.invalidIqamaMessage"), "error");
       return false;
     }
 
     if (!password.trim()) {
-      Alert.alert("Missing Password", "Please enter your password.");
+      showSnackbar(t("auth.missingPasswordMessage"), "error");
       return false;
     }
 
     if (password.length < 6) {
-      Alert.alert("Weak Password", "Password must be at least 6 characters.");
+      showSnackbar(t("auth.weakPasswordMessage"), "error");
       return false;
     }
 
@@ -102,18 +132,22 @@ export default function HomeScreen() {
 
       if (isRegister) {
         await register(payload);
+        showSnackbar(t("auth.registerSuccess"), "success");
       } else {
         await login(payload);
+        showSnackbar(t("auth.loginSuccess"), "success");
       }
 
       router.replace("/explore");
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Something went wrong. Please try again.";
+      const backendMessage =
+        error?.response?.data?.message || error?.response?.data?.error;
 
-      Alert.alert(isRegister ? "Register Failed" : "Login Failed", message);
+      const message =
+        backendMessage ||
+        (isRegister ? t("auth.registerFailed") : t("auth.loginFailed"));
+
+      showSnackbar(message, "error");
     } finally {
       setLoading(false);
     }
@@ -126,13 +160,32 @@ export default function HomeScreen() {
     setPassword("");
   }
 
+  function Snackbar() {
+    if (!snackbar.visible) return null;
+
+    return (
+      <View
+        style={[
+          styles.snackbar,
+          snackbar.type === "success" && styles.snackbarSuccess,
+          snackbar.type === "error" && styles.snackbarError,
+          snackbar.type === "info" && styles.snackbarInfo,
+        ]}
+      >
+        <Text style={styles.snackbarText}>{snackbar.message}</Text>
+      </View>
+    );
+  }
+
   if (checkingToken) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>Checking login...</Text>
+          <Text style={styles.loadingText}>{t("auth.checkingLogin")}</Text>
         </View>
+
+        <Snackbar />
       </SafeAreaView>
     );
   }
@@ -142,11 +195,12 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loggedInContainer}>
           <View style={styles.loggedInCard}>
-            <Text style={styles.loggedInTitle}>You are already logged in</Text>
+            <Text style={styles.loggedInTitle}>
+              {t("auth.alreadyLoggedIn")}
+            </Text>
 
             <Text style={styles.loggedInSubtitle}>
-              You can continue to your orders or sign out and use another
-              account.
+              {t("auth.alreadyLoggedInSubtitle")}
             </Text>
 
             <TouchableOpacity
@@ -154,7 +208,9 @@ export default function HomeScreen() {
               onPress={() => router.replace("/explore")}
               style={styles.continueButton}
             >
-              <Text style={styles.continueButtonText}>Continue to Orders</Text>
+              <Text style={styles.continueButtonText}>
+                {t("auth.continueToOrders")}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -162,10 +218,12 @@ export default function HomeScreen() {
               onPress={handleSignOut}
               style={styles.signOutButton}
             >
-              <Text style={styles.signOutButtonText}>Sign Out</Text>
+              <Text style={styles.signOutButtonText}>{t("auth.signOut")}</Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        <Snackbar />
       </SafeAreaView>
     );
   }
@@ -184,23 +242,21 @@ export default function HomeScreen() {
         >
           <View style={styles.header}>
             <Text style={styles.title}>
-              {isRegister ? "Create Account" : "Welcome Back"}
+              {isRegister ? t("auth.createAccount") : t("auth.welcomeBack")}
             </Text>
 
             <Text style={styles.subtitle}>
-              {isRegister
-                ? "Register using your Iqama ID and password"
-                : "Login with your Iqama ID and password"}
+              {isRegister ? t("auth.registerSubtitle") : t("auth.loginSubtitle")}
             </Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.label}>Iqama ID</Text>
+            <Text style={styles.label}>{t("auth.iqamaId")}</Text>
 
             <TextInput
               value={iqamaId}
               onChangeText={setIqamaId}
-              placeholder="Enter Iqama ID"
+              placeholder={t("auth.enterIqamaId")}
               keyboardType="number-pad"
               maxLength={10}
               style={styles.input}
@@ -209,12 +265,12 @@ export default function HomeScreen() {
 
             <View style={styles.inputGap} />
 
-            <Text style={styles.label}>Password</Text>
+            <Text style={styles.label}>{t("auth.password")}</Text>
 
             <TextInput
               value={password}
               onChangeText={setPassword}
-              placeholder="Enter password"
+              placeholder={t("auth.enterPassword")}
               secureTextEntry
               style={styles.input}
               placeholderTextColor="#94a3b8"
@@ -232,11 +288,11 @@ export default function HomeScreen() {
               <Text style={styles.submitButtonText}>
                 {loading
                   ? isRegister
-                    ? "Creating..."
-                    : "Checking..."
+                    ? t("auth.creating")
+                    : t("auth.checking")
                   : isRegister
-                    ? "Register"
-                    : "Login"}
+                    ? t("auth.register")
+                    : t("auth.login")}
               </Text>
             </TouchableOpacity>
 
@@ -247,16 +303,14 @@ export default function HomeScreen() {
               style={styles.switchButton}
             >
               <Text style={styles.switchText}>
-                {isRegister
-                  ? "Already have an account? Login"
-                  : "Don't have an account? Register"}
+                {isRegister ? t("auth.haveAccount") : t("auth.noAccount")}
               </Text>
             </TouchableOpacity>
           </View>
-
-          <Text style={styles.apiText}>API: http://192.168.0.198:5000/api</Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Snackbar />
     </SafeAreaView>
   );
 }
@@ -444,10 +498,43 @@ const styles = StyleSheet.create({
     color: "#2563eb",
   },
 
-  apiText: {
-    marginTop: 18,
+  snackbar: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 28,
+    minHeight: 48,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 8,
+  },
+
+  snackbarSuccess: {
+    backgroundColor: "#16a34a",
+  },
+
+  snackbarError: {
+    backgroundColor: "#dc2626",
+  },
+
+  snackbarInfo: {
+    backgroundColor: "#0f172a",
+  },
+
+  snackbarText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
     textAlign: "center",
-    fontSize: 11,
-    color: "#94a3b8",
   },
 });

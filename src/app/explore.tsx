@@ -1,8 +1,8 @@
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,8 +16,9 @@ import {
   completeOrderDelivery,
   createPickupOrder,
   getActiveOrder,
-  getMyOrders
+  getMyOrders,
 } from "@/api/orderApi";
+import { getToken } from "@/api/client";
 
 type OrderPhoto = {
   uri: string;
@@ -42,9 +43,12 @@ type BackendOrder = {
   durationSeconds?: number | null;
 };
 
-export default function TabTwoScreen() {
-  const [showOrderCard, setShowOrderCard] = useState(false);
+type SnackbarType = "success" | "error" | "info";
 
+export default function TabTwoScreen() {
+  const { t } = useTranslation();
+
+  const [showOrderCard, setShowOrderCard] = useState(false);
   const [activeOrder, setActiveOrder] = useState<BackendOrder | null>(null);
 
   const [pickupPhoto, setPickupPhoto] = useState<OrderPhoto | null>(null);
@@ -54,77 +58,132 @@ export default function TabTwoScreen() {
   const [uploadingPickup, setUploadingPickup] = useState(false);
   const [uploadingDelivery, setUploadingDelivery] = useState(false);
 
-
   const [orders, setOrders] = useState<BackendOrder[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
 
- useEffect(() => {
-  loadScreenData();
-}, []);
+  const [snackbar, setSnackbar] = useState<{
+    visible: boolean;
+    message: string;
+    type: SnackbarType;
+  }>({
+    visible: false,
+    message: "",
+    type: "info",
+  });
 
+  useEffect(() => {
+    loadScreenData();
+  }, []);
+
+  function showSnackbar(message: string, type: SnackbarType = "info") {
+    setSnackbar({
+      visible: true,
+      message,
+      type,
+    });
+
+    setTimeout(() => {
+      setSnackbar((current) => ({
+        ...current,
+        visible: false,
+      }));
+    }, 3000);
+  }
 
   function safeDate(value?: string | null) {
-  if (!value) return new Date();
+    if (!value) return new Date();
 
-  const date = new Date(value);
+    const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return new Date();
-  }
-
-  return date;
-}
-  async function loadActiveOrder() {
-    setLoadingActiveOrder(true);
-
-    try {
-      const response = await getActiveOrder();
-
-      if (response?.order) {
-        const order: BackendOrder = response.order;
-
-        setActiveOrder(order);
-        setShowOrderCard(true);
-
-        if (order.pickupPhoto?.url) {
-         setPickupPhoto({
-  uri: order.pickupPhoto.url,
-  time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
-});
-        }
-
-        if (order.deliveryPhoto?.url) {
-          setDeliveryPhoto({
-            uri: order.deliveryPhoto.url,
-            time: safeDate(order.deliveryPhoto.takenAt || order.deliveryTime),
-          });
-        }
-      }
-    } catch (error: any) {
-      console.log("Load active order error:", error?.response?.data || error);
-    } finally {
-      setLoadingActiveOrder(false);
+    if (Number.isNaN(date.getTime())) {
+      return new Date();
     }
+
+    return date;
   }
 
+ async function loadScreenData() {
+  setLoadingActiveOrder(true);
+  setLoadingOrders(true);
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      setActiveOrder(null);
+      setPickupPhoto(null);
+      setDeliveryPhoto(null);
+      setShowOrderCard(false);
+      setOrders([]);
+
+      showSnackbar(t("auth.pleaseLoginFirst"), "error");
+
+      setLoadingActiveOrder(false);
+      setLoadingOrders(false);
+      return;
+    }
+
+    const [activeResponse, ordersResponse] = await Promise.all([
+      getActiveOrder(),
+      getMyOrders(),
+    ]);
+
+    if (activeResponse?.order) {
+      const order: BackendOrder = activeResponse.order;
+
+      setActiveOrder(order);
+      setShowOrderCard(true);
+
+      if (order.pickupPhoto?.url) {
+        setPickupPhoto({
+          uri: order.pickupPhoto.url,
+          time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
+        });
+      }
+
+      if (order.deliveryPhoto?.url) {
+        setDeliveryPhoto({
+          uri: order.deliveryPhoto.url,
+          time: safeDate(order.deliveryPhoto.takenAt || order.deliveryTime),
+        });
+      }
+    } else {
+      setActiveOrder(null);
+      setPickupPhoto(null);
+      setDeliveryPhoto(null);
+      setShowOrderCard(false);
+    }
+
+    setOrders(ordersResponse?.orders || []);
+  } catch (error: any) {
+    console.log("Load orders error:", error?.response?.data || error);
+
+    const message =
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      t("orders.loadFailed");
+
+    showSnackbar(message, "error");
+  } finally {
+    setLoadingActiveOrder(false);
+    setLoadingOrders(false);
+  }
+}
   async function openCamera(type: "pickup" | "delivery") {
     if (type === "delivery" && !activeOrder) {
-      Alert.alert("Pickup required", "Please upload pickup photo first.");
+      showSnackbar(t("orders.pickupRequiredMessage"), "error");
       return;
     }
 
     if (type === "delivery" && activeOrder?.status === "delivered") {
-      Alert.alert("Already delivered", "This order is already completed.");
+      showSnackbar(t("orders.alreadyDeliveredMessage"), "error");
       return;
     }
 
     const permission = await ImagePicker.requestCameraPermissionsAsync();
 
     if (!permission.granted) {
-      Alert.alert(
-        "Camera permission required",
-        "Please allow camera access to take photos."
-      );
+      showSnackbar(t("orders.cameraPermissionMessage"), "error");
       return;
     }
 
@@ -173,69 +232,24 @@ export default function TabTwoScreen() {
         });
       }
 
-      Alert.alert("Pickup saved", "Pickup photo uploaded successfully.");
+      showSnackbar(t("orders.pickupSavedMessage"), "success");
     } catch (error: any) {
       setPickupPhoto(null);
 
       const message =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
-        "Failed to upload pickup photo.";
+        t("orders.pickupUploadFailed");
 
-      Alert.alert("Upload Failed", message);
+      showSnackbar(message, "error");
     } finally {
       setUploadingPickup(false);
     }
   }
 
-
-  async function loadScreenData() {
-  setLoadingActiveOrder(true);
-  setLoadingOrders(true);
-
-  try {
-    const [activeResponse, ordersResponse] = await Promise.all([
-      getActiveOrder(),
-      getMyOrders(),
-    ]);
-
-    if (activeResponse?.order) {
-      const order: BackendOrder = activeResponse.order;
-
-      setActiveOrder(order);
-      setShowOrderCard(true);
-
-      if (order.pickupPhoto?.url) {
-        setPickupPhoto({
-          uri: order.pickupPhoto.url,
-          time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
-        });
-      }
-
-      if (order.deliveryPhoto?.url) {
-        setDeliveryPhoto({
-          uri: order.deliveryPhoto.url,
-          time: safeDate(order.deliveryPhoto.takenAt || order.deliveryTime),
-        });
-      }
-    } else {
-      setActiveOrder(null);
-      setPickupPhoto(null);
-      setDeliveryPhoto(null);
-      setShowOrderCard(false);
-    }
-
-    setOrders(ordersResponse?.orders || []);
-  } catch (error: any) {
-    console.log("Load orders error:", error?.response?.data || error);
-  } finally {
-    setLoadingActiveOrder(false);
-    setLoadingOrders(false);
-  }
-}
   async function handleDeliveryUpload(photo: OrderPhoto) {
     if (!activeOrder?._id) {
-      Alert.alert("No active order", "Please upload pickup photo first.");
+      showSnackbar(t("orders.pickupRequiredMessage"), "error");
       return;
     }
 
@@ -263,16 +277,16 @@ export default function TabTwoScreen() {
         });
       }
 
-      Alert.alert("Delivered", "Delivery photo uploaded successfully.");
+      showSnackbar(t("orders.deliveredMessage"), "success");
     } catch (error: any) {
       setDeliveryPhoto(null);
 
       const message =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
-        "Failed to upload delivery photo.";
+        t("orders.deliveryUploadFailed");
 
-      Alert.alert("Upload Failed", message);
+      showSnackbar(message, "error");
     } finally {
       setUploadingDelivery(false);
     }
@@ -294,7 +308,7 @@ export default function TabTwoScreen() {
     }
 
     if (!pickupPhoto || !deliveryPhoto) {
-      return activeOrder ? "In progress" : "Waiting";
+      return activeOrder ? t("orders.inProgress") : t("orders.waiting");
     }
 
     const diffMs = deliveryPhoto.time.getTime() - pickupPhoto.time.getTime();
@@ -328,6 +342,23 @@ export default function TabTwoScreen() {
     setShowOrderCard(false);
   }
 
+  function Snackbar() {
+    if (!snackbar.visible) return null;
+
+    return (
+      <View
+        style={[
+          styles.snackbar,
+          snackbar.type === "success" && styles.snackbarSuccess,
+          snackbar.type === "error" && styles.snackbarError,
+          snackbar.type === "info" && styles.snackbarInfo,
+        ]}
+      >
+        <Text style={styles.snackbarText}>{snackbar.message}</Text>
+      </View>
+    );
+  }
+
   const isDelivered = activeOrder?.status === "delivered";
 
   return (
@@ -338,27 +369,23 @@ export default function TabTwoScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Orders</Text>
+          <Text style={styles.title}>{t("orders.title")}</Text>
 
-          <Text style={styles.subtitle}>
-            Take pickup photo first. Delivery photo will update the same order.
-          </Text>
+          <Text style={styles.subtitle}>{t("orders.subtitle")}</Text>
         </View>
 
         {loadingActiveOrder && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Loading...</Text>
-            <Text style={styles.emptyText}>Checking active order.</Text>
+            <Text style={styles.emptyTitle}>{t("orders.loading")}</Text>
+            <Text style={styles.emptyText}>{t("orders.checkingActiveOrder")}</Text>
           </View>
         )}
 
         {!loadingActiveOrder && !showOrderCard && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No active order</Text>
+            <Text style={styles.emptyTitle}>{t("orders.noActiveOrder")}</Text>
 
-            <Text style={styles.emptyText}>
-              Tap Add Order to start tracking.
-            </Text>
+            <Text style={styles.emptyText}>{t("orders.tapAddOrder")}</Text>
           </View>
         )}
 
@@ -367,7 +394,7 @@ export default function TabTwoScreen() {
             <View style={styles.compactTopRow}>
               <View style={styles.compactTitleBox}>
                 <Text style={styles.cardTitle}>
-                  {isDelivered ? "Delivered" : "New Order"}
+                  {isDelivered ? t("orders.delivered") : t("orders.newOrder")}
                 </Text>
 
                 <Text style={styles.durationText}>{getDurationText()}</Text>
@@ -400,14 +427,14 @@ export default function TabTwoScreen() {
                   )}
                 </View>
 
-                <Text style={styles.smallPhotoLabel}>Pickup</Text>
+                <Text style={styles.smallPhotoLabel}>{t("orders.pickup")}</Text>
 
                 <Text style={styles.smallPhotoTime}>
                   {uploadingPickup
-                    ? "Saving..."
+                    ? t("orders.saving")
                     : pickupPhoto
                       ? formatTime(pickupPhoto.time)
-                      : "Take"}
+                      : t("orders.take")}
                 </Text>
               </TouchableOpacity>
 
@@ -437,14 +464,14 @@ export default function TabTwoScreen() {
                   )}
                 </View>
 
-                <Text style={styles.smallPhotoLabel}>Deliver</Text>
+                <Text style={styles.smallPhotoLabel}>{t("orders.deliver")}</Text>
 
                 <Text style={styles.smallPhotoTime}>
                   {uploadingDelivery
-                    ? "Saving..."
+                    ? t("orders.saving")
                     : deliveryPhoto
                       ? formatTime(deliveryPhoto.time)
-                      : "Take"}
+                      : t("orders.take")}
                 </Text>
               </TouchableOpacity>
 
@@ -455,69 +482,75 @@ export default function TabTwoScreen() {
           </View>
         )}
 
-
         <View style={styles.historySection}>
-  <Text style={styles.historyTitle}>Order History</Text>
+          <Text style={styles.historyTitle}>{t("orders.orderHistory")}</Text>
 
-  {loadingOrders && (
-    <Text style={styles.historyEmptyText}>Loading orders...</Text>
-  )}
-
-  {!loadingOrders && orders.length === 0 && (
-    <Text style={styles.historyEmptyText}>No completed orders yet.</Text>
-  )}
-
-  {!loadingOrders &&
-    orders.map((order) => {
-      const isCompleted = order.status === "delivered";
-
-      return (
-        <View key={order._id} style={styles.historyCard}>
-          <View style={styles.historyInfo}>
-            <Text style={styles.historyStatus}>
-              {isCompleted ? "Delivered" : "In Progress"}
+          {loadingOrders && (
+            <Text style={styles.historyEmptyText}>
+              {t("orders.loadingOrders")}
             </Text>
+          )}
 
-            <Text style={styles.historyId}>#{order._id.slice(-6)}</Text>
-
-            <Text style={styles.historyTime}>
-              Pickup: {formatTime(safeDate(order.pickupTime))}
+          {!loadingOrders && orders.length === 0 && (
+            <Text style={styles.historyEmptyText}>
+              {t("orders.noCompletedOrders")}
             </Text>
+          )}
 
-            {order.deliveryTime && (
-              <Text style={styles.historyTime}>
-                Delivery: {formatTime(safeDate(order.deliveryTime))}
-              </Text>
-            )}
+          {!loadingOrders &&
+            orders.map((order) => {
+              const isCompleted = order.status === "delivered";
 
-            <Text style={styles.historyDuration}>
-              {order.durationSeconds != null
-                ? formatDuration(order.durationSeconds)
-                : "In progress"}
-            </Text>
-          </View>
+              return (
+                <View key={order._id} style={styles.historyCard}>
+                  <View style={styles.historyInfo}>
+                    <Text style={styles.historyStatus}>
+                      {isCompleted
+                        ? t("orders.delivered")
+                        : t("orders.inProgress")}
+                    </Text>
 
-          <View style={styles.historyImages}>
-            {order.pickupPhoto?.url && (
-              <Image
-                source={{ uri: order.pickupPhoto.url }}
-                style={styles.historyImage}
-                contentFit="cover"
-              />
-            )}
+                    <Text style={styles.historyId}>#{order._id.slice(-6)}</Text>
 
-            {order.deliveryPhoto?.url && (
-              <Image
-                source={{ uri: order.deliveryPhoto.url }}
-                style={styles.historyImage}
-                contentFit="cover"
-              />
-            )}
-          </View>
+                    <Text style={styles.historyTime}>
+                      {t("orders.pickup")}: {formatTime(safeDate(order.pickupTime))}
+                    </Text>
+
+                    {order.deliveryTime && (
+                      <Text style={styles.historyTime}>
+                        {t("orders.deliver")}:{" "}
+                        {formatTime(safeDate(order.deliveryTime))}
+                      </Text>
+                    )}
+
+                    <Text style={styles.historyDuration}>
+                      {order.durationSeconds != null
+                        ? formatDuration(order.durationSeconds)
+                        : t("orders.inProgress")}
+                    </Text>
+                  </View>
+
+                  <View style={styles.historyImages}>
+                    {order.pickupPhoto?.url && (
+                      <Image
+                        source={{ uri: order.pickupPhoto.url }}
+                        style={styles.historyImage}
+                        contentFit="cover"
+                      />
+                    )}
+
+                    {order.deliveryPhoto?.url && (
+                      <Image
+                        source={{ uri: order.deliveryPhoto.url }}
+                        style={styles.historyImage}
+                        contentFit="cover"
+                      />
+                    )}
+                  </View>
+                </View>
+              );
+            })}
         </View>
-      );
-    })}
-</View>
       </ScrollView>
 
       <TouchableOpacity
@@ -527,8 +560,10 @@ export default function TabTwoScreen() {
         style={styles.floatingButton}
       >
         <Text style={styles.floatingPlus}>+</Text>
-        <Text style={styles.floatingText}>Add Order</Text>
+        <Text style={styles.floatingText}>{t("orders.addOrder")}</Text>
       </TouchableOpacity>
+
+      <Snackbar />
     </SafeAreaView>
   );
 }
@@ -735,81 +770,120 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 
-
   historySection: {
-  marginTop: 22,
-},
-
-historyTitle: {
-  marginBottom: 10,
-  fontSize: 18,
-  fontWeight: "800",
-  color: "#0f172a",
-},
-
-historyEmptyText: {
-  fontSize: 13,
-  color: "#64748b",
-},
-
-historyCard: {
-  marginBottom: 10,
-  minHeight: 86,
-  borderRadius: 18,
-  backgroundColor: "#ffffff",
-  padding: 10,
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  shadowColor: "#000",
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  shadowOffset: {
-    width: 0,
-    height: 3,
+    marginTop: 22,
   },
-  elevation: 3,
-},
 
-historyInfo: {
-  flex: 1,
-  paddingRight: 10,
-},
+  historyTitle: {
+    marginBottom: 10,
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
 
-historyStatus: {
-  fontSize: 13,
-  fontWeight: "800",
-  color: "#0f172a",
-},
+  historyEmptyText: {
+    fontSize: 13,
+    color: "#64748b",
+  },
 
-historyId: {
-  marginTop: 2,
-  fontSize: 10,
-  color: "#94a3b8",
-},
+  historyCard: {
+    marginBottom: 10,
+    minHeight: 86,
+    borderRadius: 18,
+    backgroundColor: "#ffffff",
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    elevation: 3,
+  },
 
-historyTime: {
-  marginTop: 2,
-  fontSize: 10,
-  color: "#64748b",
-},
+  historyInfo: {
+    flex: 1,
+    paddingRight: 10,
+  },
 
-historyDuration: {
-  marginTop: 4,
-  fontSize: 12,
-  fontWeight: "800",
-  color: "#2563eb",
-},
+  historyStatus: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0f172a",
+  },
 
-historyImages: {
-  flexDirection: "row",
-  gap: 6,
-},
+  historyId: {
+    marginTop: 2,
+    fontSize: 10,
+    color: "#94a3b8",
+  },
 
-historyImage: {
-  width: 42,
-  height: 42,
-  borderRadius: 10,
-  backgroundColor: "#f1f5f9",
-},
+  historyTime: {
+    marginTop: 2,
+    fontSize: 10,
+    color: "#64748b",
+  },
+
+  historyDuration: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#2563eb",
+  },
+
+  historyImages: {
+    flexDirection: "row",
+    gap: 6,
+  },
+
+  historyImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: "#f1f5f9",
+  },
+
+  snackbar: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 28,
+    minHeight: 48,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 8,
+  },
+
+  snackbarSuccess: {
+    backgroundColor: "#16a34a",
+  },
+
+  snackbarError: {
+    backgroundColor: "#dc2626",
+  },
+
+  snackbarInfo: {
+    backgroundColor: "#0f172a",
+  },
+
+  snackbarText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+  },
 });
