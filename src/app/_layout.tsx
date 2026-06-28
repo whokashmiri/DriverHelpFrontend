@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
 
   languageToggleWrapper: {
     position: "absolute",
-    top: 52,
+    top: 35,
     zIndex: 999,
     flexDirection: "row",
     alignItems: "center",
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
   },
 
   languageButton: {
-    minWidth: 74,
+    minWidth: 60,
     height: 34,
     borderRadius: 999,
     backgroundColor: "#2563eb",
