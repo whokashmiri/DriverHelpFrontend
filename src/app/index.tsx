@@ -296,7 +296,7 @@ export default function HomeScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            {/* <TouchableOpacity
               activeOpacity={0.85}
               onPress={switchMode}
               disabled={loading}
@@ -305,7 +305,7 @@ export default function HomeScreen() {
               <Text style={styles.switchText}>
                 {isRegister ? t("auth.haveAccount") : t("auth.noAccount")}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

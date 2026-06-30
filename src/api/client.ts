@@ -2,7 +2,8 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
-const API_BASE_URL = "http://192.168.0.198:5000/api";
+const API_BASE_URL = "https://driverhelp.167.71.231.64.nip.io/api";
+// const API_BASE_URL = "http://192.168.0.198:5000/api";
 // Replace 192.168.1.20 with your laptop/computer IP address
 
 export const api = axios.create({
