@@ -1,5 +1,6 @@
 import { DefaultTheme, ThemeProvider } from "expo-router";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   I18nManager,
@@ -8,7 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useTranslation } from "react-i18next";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 import AppTabs from "@/components/app-tabs";
@@ -68,10 +68,12 @@ function LanguageToggle({
     <View
       style={[
         styles.languageToggleWrapper,
-        I18nManager.isRTL ? styles.languageToggleLeft : styles.languageToggleRight,
+        I18nManager.isRTL
+          ? styles.languageToggleLeft
+          : styles.languageToggleRight,
       ]}
     >
-      <Text style={styles.languageLabel}>{t("common.language")}</Text>
+      {/* <Text style={styles.languageLabel}>{t("common.language")}</Text> */}
 
       <TouchableOpacity
         activeOpacity={0.85}
@@ -102,7 +104,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     borderRadius: 999,
-    backgroundColor: "#ffffff",
+    // backgroundColor: "#ffffff",
     paddingVertical: 8,
     paddingHorizontal: 12,
     shadowColor: "#000",
@@ -112,7 +114,7 @@ const styles = StyleSheet.create({
       width: 0,
       height: 4,
     },
-    elevation: 8,
+    // elevation: 8,
   },
 
   languageToggleRight: {
