@@ -20,12 +20,8 @@ export async function login(payload: AuthPayload) {
 export async function register(payload: AuthPayload) {
   const response = await api.post("/auth/register", payload);
 
-  const token = response.data?.token;
-
-  if (token) {
-    await saveToken(token);
-  }
-
+  // Do not save token after register.
+  // User should login manually after successful registration.
   return response.data;
 }
 

@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Pressable,
@@ -12,13 +13,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { getToken } from "@/api/client";
 import {
   completeOrderDelivery,
   createPickupOrder,
   getActiveOrder,
   getMyOrders,
 } from "@/api/orderApi";
-import { getToken } from "@/api/client";
 
 type OrderPhoto = {
   uri: string;
@@ -48,6 +49,8 @@ type SnackbarType = "success" | "error" | "info";
 export default function TabTwoScreen() {
   const { t } = useTranslation();
 
+  const router = useRouter();
+
   const [showOrderCard, setShowOrderCard] = useState(false);
   const [activeOrder, setActiveOrder] = useState<BackendOrder | null>(null);
 
@@ -71,9 +74,84 @@ export default function TabTwoScreen() {
     type: "info",
   });
 
-  useEffect(() => {
-    loadScreenData();
-  }, []);
+  async function loadScreenData() {
+    setLoadingActiveOrder(true);
+    setLoadingOrders(true);
+
+    try {
+      const token = await getToken();
+
+      if (!token) {
+        setActiveOrder(null);
+        setPickupPhoto(null);
+        setDeliveryPhoto(null);
+        setShowOrderCard(false);
+        setOrders([]);
+
+        router.replace("/");
+        return;
+      }
+
+      const [activeResponse, ordersResponse] = await Promise.all([
+        getActiveOrder(),
+        getMyOrders(),
+      ]);
+
+      if (activeResponse?.order) {
+        const order: BackendOrder = activeResponse.order;
+
+        setActiveOrder(order);
+        setShowOrderCard(true);
+
+        if (order.pickupPhoto?.url) {
+          setPickupPhoto({
+            uri: order.pickupPhoto.url,
+            time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
+          });
+        }
+
+        if (order.deliveryPhoto?.url) {
+          setDeliveryPhoto({
+            uri: order.deliveryPhoto.url,
+            time: safeDate(order.deliveryPhoto.takenAt || order.deliveryTime),
+          });
+        } else {
+          setDeliveryPhoto(null);
+        }
+      } else {
+        setActiveOrder(null);
+        setPickupPhoto(null);
+        setDeliveryPhoto(null);
+        setShowOrderCard(false);
+      }
+
+      const allOrders: BackendOrder[] = ordersResponse?.orders || [];
+
+      setOrders(allOrders);
+    } catch (error: any) {
+      console.log("Load orders error:", error?.response?.data || error);
+
+      const status = error?.response?.status;
+      const backendMessage =
+        error?.response?.data?.message || error?.response?.data?.error;
+
+      if (status === 401) {
+        router.replace("/");
+        return;
+      }
+
+      showSnackbar(backendMessage || t("orders.loadFailed"), "error");
+    } finally {
+      setLoadingActiveOrder(false);
+      setLoadingOrders(false);
+    }
+  }
+
+  useFocusEffect(
+    useCallback(() => {
+      loadScreenData();
+    }, []),
+  );
 
   function showSnackbar(message: string, type: SnackbarType = "info") {
     setSnackbar({
@@ -102,73 +180,6 @@ export default function TabTwoScreen() {
     return date;
   }
 
- async function loadScreenData() {
-  setLoadingActiveOrder(true);
-  setLoadingOrders(true);
-
-  try {
-    const token = await getToken();
-
-    if (!token) {
-      setActiveOrder(null);
-      setPickupPhoto(null);
-      setDeliveryPhoto(null);
-      setShowOrderCard(false);
-      setOrders([]);
-
-      showSnackbar(t("auth.pleaseLoginFirst"), "error");
-
-      setLoadingActiveOrder(false);
-      setLoadingOrders(false);
-      return;
-    }
-
-    const [activeResponse, ordersResponse] = await Promise.all([
-      getActiveOrder(),
-      getMyOrders(),
-    ]);
-
-    if (activeResponse?.order) {
-      const order: BackendOrder = activeResponse.order;
-
-      setActiveOrder(order);
-      setShowOrderCard(true);
-
-      if (order.pickupPhoto?.url) {
-        setPickupPhoto({
-          uri: order.pickupPhoto.url,
-          time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
-        });
-      }
-
-      if (order.deliveryPhoto?.url) {
-        setDeliveryPhoto({
-          uri: order.deliveryPhoto.url,
-          time: safeDate(order.deliveryPhoto.takenAt || order.deliveryTime),
-        });
-      }
-    } else {
-      setActiveOrder(null);
-      setPickupPhoto(null);
-      setDeliveryPhoto(null);
-      setShowOrderCard(false);
-    }
-
-    setOrders(ordersResponse?.orders || []);
-  } catch (error: any) {
-    console.log("Load orders error:", error?.response?.data || error);
-
-    const message =
-      error?.response?.data?.message ||
-      error?.response?.data?.error ||
-      t("orders.loadFailed");
-
-    showSnackbar(message, "error");
-  } finally {
-    setLoadingActiveOrder(false);
-    setLoadingOrders(false);
-  }
-}
   async function openCamera(type: "pickup" | "delivery") {
     if (type === "delivery" && !activeOrder) {
       showSnackbar(t("orders.pickupRequiredMessage"), "error");
@@ -272,7 +283,7 @@ export default function TabTwoScreen() {
         setDeliveryPhoto({
           uri: updatedOrder.deliveryPhoto.url,
           time: safeDate(
-            updatedOrder.deliveryPhoto.takenAt || updatedOrder.deliveryTime
+            updatedOrder.deliveryPhoto.takenAt || updatedOrder.deliveryTime,
           ),
         });
       }
@@ -377,7 +388,9 @@ export default function TabTwoScreen() {
         {loadingActiveOrder && (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>{t("orders.loading")}</Text>
-            <Text style={styles.emptyText}>{t("orders.checkingActiveOrder")}</Text>
+            <Text style={styles.emptyText}>
+              {t("orders.checkingActiveOrder")}
+            </Text>
           </View>
         )}
 
@@ -464,7 +477,9 @@ export default function TabTwoScreen() {
                   )}
                 </View>
 
-                <Text style={styles.smallPhotoLabel}>{t("orders.deliver")}</Text>
+                <Text style={styles.smallPhotoLabel}>
+                  {t("orders.deliver")}
+                </Text>
 
                 <Text style={styles.smallPhotoTime}>
                   {uploadingDelivery
@@ -513,7 +528,8 @@ export default function TabTwoScreen() {
                     <Text style={styles.historyId}>#{order._id.slice(-6)}</Text>
 
                     <Text style={styles.historyTime}>
-                      {t("orders.pickup")}: {formatTime(safeDate(order.pickupTime))}
+                      {t("orders.pickup")}:{" "}
+                      {formatTime(safeDate(order.pickupTime))}
                     </Text>
 
                     {order.deliveryTime && (
@@ -585,7 +601,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    marginBottom: 18,
+    marginTop: 35,
   },
 
   title: {

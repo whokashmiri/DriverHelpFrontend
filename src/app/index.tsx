@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useFocusEffect } from "expo-router";
 import { getMe, login, register } from "../api/authApi";
 import { getToken, removeToken } from "../api/client";
 
@@ -27,6 +28,7 @@ export default function HomeScreen() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [iqamaId, setIqamaId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [checkingToken, setCheckingToken] = useState(true);
@@ -44,9 +46,11 @@ export default function HomeScreen() {
 
   const isRegister = mode === "register";
 
-  useEffect(() => {
-    checkSavedLogin();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      checkSavedLogin();
+    }, []),
+  );
 
   function showSnackbar(message: string, type: SnackbarType = "info") {
     setSnackbar({
@@ -132,13 +136,28 @@ export default function HomeScreen() {
 
       if (isRegister) {
         await register(payload);
+
+        await removeToken();
+
         showSnackbar(t("auth.registerSuccess"), "success");
-      } else {
-        await login(payload);
-        showSnackbar(t("auth.loginSuccess"), "success");
+
+        setMode("login");
+        setPassword("");
+        setShowPassword(false);
+        setAlreadyLoggedIn(false);
+
+        return;
       }
 
-      router.replace("/explore");
+      await login(payload);
+
+      showSnackbar(t("auth.loginSuccess"), "success");
+
+      setAlreadyLoggedIn(true);
+
+      setTimeout(() => {
+        router.replace("/explore");
+      }, 600);
     } catch (error: any) {
       const backendMessage =
         error?.response?.data?.message || error?.response?.data?.error;
@@ -152,12 +171,12 @@ export default function HomeScreen() {
       setLoading(false);
     }
   }
-
   function switchMode() {
     if (loading) return;
 
     setMode((current) => (current === "login" ? "register" : "login"));
     setPassword("");
+    setShowPassword(false);
   }
 
   function Snackbar() {
@@ -246,7 +265,9 @@ export default function HomeScreen() {
             </Text>
 
             <Text style={styles.subtitle}>
-              {isRegister ? t("auth.registerSubtitle") : t("auth.loginSubtitle")}
+              {isRegister
+                ? t("auth.registerSubtitle")
+                : t("auth.loginSubtitle")}
             </Text>
           </View>
 
@@ -267,14 +288,28 @@ export default function HomeScreen() {
 
             <Text style={styles.label}>{t("auth.password")}</Text>
 
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder={t("auth.enterPassword")}
-              secureTextEntry
-              style={styles.input}
-              placeholderTextColor="#94a3b8"
-            />
+            <View style={styles.passwordInputWrap}>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder={t("auth.enterPassword")}
+                secureTextEntry={!showPassword}
+                style={styles.passwordInput}
+                placeholderTextColor="#94a3b8"
+              />
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setShowPassword((current) => !current)}
+                style={styles.passwordToggle}
+              >
+                <Text style={styles.passwordToggleText}>
+                  {showPassword
+                    ? t("auth.hidePassword")
+                    : t("auth.showPassword")}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               activeOpacity={0.85}
@@ -296,7 +331,7 @@ export default function HomeScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* <TouchableOpacity
+            <TouchableOpacity
               activeOpacity={0.85}
               onPress={switchMode}
               disabled={loading}
@@ -305,7 +340,7 @@ export default function HomeScreen() {
               <Text style={styles.switchText}>
                 {isRegister ? t("auth.haveAccount") : t("auth.noAccount")}
               </Text>
-            </TouchableOpacity> */}
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -405,6 +440,38 @@ const styles = StyleSheet.create({
 
   scrollView: {
     flex: 1,
+  },
+
+  passwordInputWrap: {
+    height: 56,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: "#0f172a",
+  },
+
+  passwordToggle: {
+    height: "100%",
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  passwordToggleText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#2563eb",
   },
 
   scrollContent: {
