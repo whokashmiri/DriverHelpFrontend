@@ -32,6 +32,8 @@ export const resources = {
         continueToOrders: "المتابعة إلى الطلبات",
         signOut: "تسجيل الخروج",
         checkingLogin: "جاري التحقق من تسجيل الدخول...",
+        showPassword: "إظهار",
+        hidePassword: "إخفاء",
       },
       orders: {
         title: "الطلبات",
@@ -74,6 +76,8 @@ export const resources = {
       auth: {
         pleaseLoginFirst: "Please Login First",
         welcomeBack: "Welcome Back",
+        showPassword: "Show",
+        hidePassword: "Hide",
         createAccount: "Create Account",
         loginSubtitle: "Login with your Iqama ID and password",
         registerSubtitle: "Register using your Iqama ID and password",
