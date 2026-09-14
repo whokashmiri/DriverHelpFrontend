@@ -1,34 +1,44 @@
-//src/api/client.ts
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
-const API_BASE_URL = "https://driverhelp.167.71.231.64.nip.io/api";
-// const API_BASE_URL = "http://192.168.0.198:9001/api";
-// Replace 192.168.1.20 with your laptop/computer IP address
+export const SERVER_URL = "https://driverhelp.167.71.231.64.nip.io";
+
+export const API_BASE_URL = `${SERVER_URL}/api`;
+
+// For local development:
+// export const SERVER_URL = "http://192.168.0.198:9001";
+// export const API_BASE_URL = `${SERVER_URL}/api`;
+
+const AUTH_TOKEN_KEY = "authToken";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
 });
 
-api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync("authToken");
+api.interceptors.request.use(
+  async (config) => {
+    const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-  return config;
-});
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  },
+);
 
 export async function saveToken(token: string) {
-  await SecureStore.setItemAsync("authToken", token);
+  await SecureStore.setItemAsync(AUTH_TOKEN_KEY, token);
 }
 
 export async function getToken() {
-  return SecureStore.getItemAsync("authToken");
+  return SecureStore.getItemAsync(AUTH_TOKEN_KEY);
 }
 
 export async function removeToken() {
-  await SecureStore.deleteItemAsync("authToken");
+  await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
 }

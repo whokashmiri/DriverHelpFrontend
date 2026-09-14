@@ -1,905 +1,870 @@
-import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
-  Pressable,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-import { getToken } from "@/api/client";
-import {
-  completeOrderDelivery,
-  createPickupOrder,
-  getActiveOrder,
-  getMyOrders,
-} from "@/api/orderApi";
-
-type OrderPhoto = {
-  uri: string;
-  time: Date;
+type Rider = {
+  id: string;
+  name: string;
+  phone: string;
+  status: "Available" | "Delivering" | "Offline";
+  startTime: string;
+  hoursWorked: string;
+  todayOrders: number;
+  weekOrders: number;
+  monthOrders: number;
 };
 
-type BackendOrder = {
-  _id: string;
-  status: "picked_up" | "delivered";
-  pickupPhoto?: {
-    url: string;
-    publicId: string;
-    takenAt: string;
-  };
-  deliveryPhoto?: {
-    url: string;
-    publicId: string;
-    takenAt: string;
-  } | null;
-  pickupTime?: string;
-  deliveryTime?: string | null;
-  durationSeconds?: number | null;
-};
-
-type SnackbarType = "success" | "error" | "info";
-
-export default function TabTwoScreen() {
-  const { t } = useTranslation();
-
+export default function OrdersScreen() {
   const router = useRouter();
 
-  const [showOrderCard, setShowOrderCard] = useState(false);
-  const [activeOrder, setActiveOrder] = useState<BackendOrder | null>(null);
+  const [expandedRiderId, setExpandedRiderId] = useState<string | null>(null);
 
-  const [pickupPhoto, setPickupPhoto] = useState<OrderPhoto | null>(null);
-  const [deliveryPhoto, setDeliveryPhoto] = useState<OrderPhoto | null>(null);
+  const [showAddRider, setShowAddRider] = useState(false);
 
-  const [loadingActiveOrder, setLoadingActiveOrder] = useState(true);
-  const [uploadingPickup, setUploadingPickup] = useState(false);
-  const [uploadingDelivery, setUploadingDelivery] = useState(false);
+  const [newRiderId, setNewRiderId] = useState("");
+  const [newRiderPhone, setNewRiderPhone] = useState("");
+  const [newRiderPassword, setNewRiderPassword] = useState("");
 
-  const [orders, setOrders] = useState<BackendOrder[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const [snackbar, setSnackbar] = useState<{
-    visible: boolean;
-    message: string;
-    type: SnackbarType;
-  }>({
-    visible: false,
-    message: "",
-    type: "info",
-  });
+  const riders: Rider[] = [
+    {
+      id: "001",
+      name: "محمد علي",
+      phone: "0501234567",
+      status: "Available",
+      startTime: "08:00 ص",
+      hoursWorked: "4 س 25 د",
+      todayOrders: 6,
+      weekOrders: 31,
+      monthOrders: 118,
+    },
+    {
+      id: "002",
+      name: "خالد أحمد",
+      phone: "0559876543",
+      status: "Delivering",
+      startTime: "07:30 ص",
+      hoursWorked: "4 س 55 د",
+      todayOrders: 8,
+      weekOrders: 38,
+      monthOrders: 142,
+    },
+    {
+      id: "003",
+      name: "عبدالله عمر",
+      phone: "0531112233",
+      status: "Available",
+      startTime: "09:00 ص",
+      hoursWorked: "3 س 25 د",
+      todayOrders: 4,
+      weekOrders: 26,
+      monthOrders: 101,
+    },
+    {
+      id: "004",
+      name: "فهد صالح",
+      phone: "0544445566",
+      status: "Offline",
+      startTime: "08:15 ص",
+      hoursWorked: "2 س 10 د",
+      todayOrders: 2,
+      weekOrders: 21,
+      monthOrders: 87,
+    },
+  ];
 
-  async function loadScreenData() {
-    setLoadingActiveOrder(true);
-    setLoadingOrders(true);
+  const activeRiders = riders.filter(
+    (rider) => rider.status !== "Offline",
+  ).length;
 
-    try {
-      const token = await getToken();
-
-      if (!token) {
-        setActiveOrder(null);
-        setPickupPhoto(null);
-        setDeliveryPhoto(null);
-        setShowOrderCard(false);
-        setOrders([]);
-
-        router.replace("/");
-        return;
-      }
-
-      const [activeResponse, ordersResponse] = await Promise.all([
-        getActiveOrder(),
-        getMyOrders(),
-      ]);
-
-      if (activeResponse?.order) {
-        const order: BackendOrder = activeResponse.order;
-
-        setActiveOrder(order);
-        setShowOrderCard(true);
-
-        if (order.pickupPhoto?.url) {
-          setPickupPhoto({
-            uri: order.pickupPhoto.url,
-            time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
-          });
-        }
-
-        if (order.deliveryPhoto?.url) {
-          setDeliveryPhoto({
-            uri: order.deliveryPhoto.url,
-            time: safeDate(order.deliveryPhoto.takenAt || order.deliveryTime),
-          });
-        } else {
-          setDeliveryPhoto(null);
-        }
-      } else {
-        setActiveOrder(null);
-        setPickupPhoto(null);
-        setDeliveryPhoto(null);
-        setShowOrderCard(false);
-      }
-
-      const allOrders: BackendOrder[] = ordersResponse?.orders || [];
-
-      setOrders(allOrders);
-    } catch (error: any) {
-      console.log("Load orders error:", error?.response?.data || error);
-
-      const status = error?.response?.status;
-      const backendMessage =
-        error?.response?.data?.message || error?.response?.data?.error;
-
-      if (status === 401) {
-        router.replace("/");
-        return;
-      }
-
-      showSnackbar(backendMessage || t("orders.loadFailed"), "error");
-    } finally {
-      setLoadingActiveOrder(false);
-      setLoadingOrders(false);
-    }
-  }
-
-  useFocusEffect(
-    useCallback(() => {
-      loadScreenData();
-    }, []),
+  const todayOrders = riders.reduce(
+    (total, rider) => total + rider.todayOrders,
+    0,
   );
 
-  function showSnackbar(message: string, type: SnackbarType = "info") {
-    setSnackbar({
-      visible: true,
-      message,
-      type,
-    });
+  const weekOrders = riders.reduce(
+    (total, rider) => total + rider.weekOrders,
+    0,
+  );
+
+  const monthOrders = riders.reduce(
+    (total, rider) => total + rider.monthOrders,
+    0,
+  );
+
+  function getStatusText(status: Rider["status"]) {
+    if (status === "Available") return "متاح";
+    if (status === "Delivering") return "في توصيل";
+
+    return "غير متصل";
+  }
+
+  function getStatusColor(status: Rider["status"]) {
+    if (status === "Available") return "#634B66";
+    if (status === "Delivering") return "#9590A8";
+
+    return "#BBCBCB";
+  }
+
+  function toggleRider(id: string) {
+    setExpandedRiderId((current) => (current === id ? null : id));
+  }
+
+  function closeAddRider() {
+    setShowAddRider(false);
+
+    setNewRiderId("");
+    setNewRiderPhone("");
+    setNewRiderPassword("");
+  }
+
+  function addRider() {
+    if (
+      !newRiderId.trim() ||
+      !newRiderPhone.trim() ||
+      !newRiderPassword.trim()
+    ) {
+      return;
+    }
+
+    closeAddRider();
+
+    setSuccessMessage("تمت إضافة السائق بنجاح");
 
     setTimeout(() => {
-      setSnackbar((current) => ({
-        ...current,
-        visible: false,
-      }));
+      setSuccessMessage("");
     }, 3000);
   }
 
-  function safeDate(value?: string | null) {
-    if (!value) return new Date();
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return new Date();
-    }
-
-    return date;
-  }
-
-  async function openCamera(type: "pickup" | "delivery") {
-    if (type === "delivery" && !activeOrder) {
-      showSnackbar(t("orders.pickupRequiredMessage"), "error");
-      return;
-    }
-
-    if (type === "delivery" && activeOrder?.status === "delivered") {
-      showSnackbar(t("orders.alreadyDeliveredMessage"), "error");
-      return;
-    }
-
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permission.granted) {
-      showSnackbar(t("orders.cameraPermissionMessage"), "error");
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      allowsEditing: false,
-      cameraType: ImagePicker.CameraType.back,
-    });
-
-    if (result.canceled) return;
-
-    const photo: OrderPhoto = {
-      uri: result.assets[0].uri,
-      time: new Date(),
-    };
-
-    if (type === "pickup") {
-      await handlePickupUpload(photo);
-      return;
-    }
-
-    await handleDeliveryUpload(photo);
-  }
-
-  async function handlePickupUpload(photo: OrderPhoto) {
-    setUploadingPickup(true);
-
-    try {
-      setPickupPhoto(photo);
-      setDeliveryPhoto(null);
-
-      const response = await createPickupOrder({
-        pickupPhoto: photo,
-      });
-
-      const order: BackendOrder = response.order;
-
-      setActiveOrder(order);
-      await loadScreenData();
-
-      if (order.pickupPhoto?.url) {
-        setPickupPhoto({
-          uri: order.pickupPhoto.url,
-          time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
-        });
-      }
-
-      showSnackbar(t("orders.pickupSavedMessage"), "success");
-    } catch (error: any) {
-      setPickupPhoto(null);
-
-      const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        t("orders.pickupUploadFailed");
-
-      showSnackbar(message, "error");
-    } finally {
-      setUploadingPickup(false);
-    }
-  }
-
-  async function handleDeliveryUpload(photo: OrderPhoto) {
-    if (!activeOrder?._id) {
-      showSnackbar(t("orders.pickupRequiredMessage"), "error");
-      return;
-    }
-
-    setUploadingDelivery(true);
-
-    try {
-      setDeliveryPhoto(photo);
-
-      const response = await completeOrderDelivery({
-        orderId: activeOrder._id,
-        deliveryPhoto: photo,
-      });
-
-      const updatedOrder: BackendOrder = response.order;
-
-      setActiveOrder(updatedOrder);
-      await loadScreenData();
-
-      if (updatedOrder.deliveryPhoto?.url) {
-        setDeliveryPhoto({
-          uri: updatedOrder.deliveryPhoto.url,
-          time: safeDate(
-            updatedOrder.deliveryPhoto.takenAt || updatedOrder.deliveryTime,
-          ),
-        });
-      }
-
-      showSnackbar(t("orders.deliveredMessage"), "success");
-    } catch (error: any) {
-      setDeliveryPhoto(null);
-
-      const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        t("orders.deliveryUploadFailed");
-
-      showSnackbar(message, "error");
-    } finally {
-      setUploadingDelivery(false);
-    }
-  }
-
-  function formatTime(date?: Date) {
-    if (!date) return "--";
-
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  }
-
-  function getDurationText() {
-    if (activeOrder?.durationSeconds != null) {
-      return formatDuration(activeOrder.durationSeconds);
-    }
-
-    if (!pickupPhoto || !deliveryPhoto) {
-      return activeOrder ? t("orders.inProgress") : t("orders.waiting");
-    }
-
-    const diffMs = deliveryPhoto.time.getTime() - pickupPhoto.time.getTime();
-    const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
-
-    return formatDuration(totalSeconds);
-  }
-
-  function formatDuration(totalSeconds: number) {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    if (minutes > 0) return `${minutes}m ${seconds}s`;
-
-    return `${seconds}s`;
-  }
-
-  function createOrder() {
-    setActiveOrder(null);
-    setPickupPhoto(null);
-    setDeliveryPhoto(null);
-    setShowOrderCard(true);
-  }
-
-  function resetLocalCard() {
-    setActiveOrder(null);
-    setPickupPhoto(null);
-    setDeliveryPhoto(null);
-    setShowOrderCard(false);
-  }
-
-  function Snackbar() {
-    if (!snackbar.visible) return null;
-
-    return (
-      <View
-        style={[
-          styles.snackbar,
-          snackbar.type === "success" && styles.snackbarSuccess,
-          snackbar.type === "error" && styles.snackbarError,
-          snackbar.type === "info" && styles.snackbarInfo,
-        ]}
-      >
-        <Text style={styles.snackbarText}>{snackbar.message}</Text>
-      </View>
-    );
-  }
-
-  const isDelivered = activeOrder?.status === "delivered";
-
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <>
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        style={styles.container}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>{t("orders.title")}</Text>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>لوحة المتابعة</Text>
 
-          <Text style={styles.subtitle}>{t("orders.subtitle")}</Text>
-        </View>
-
-        {loadingActiveOrder && (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>{t("orders.loading")}</Text>
-            <Text style={styles.emptyText}>
-              {t("orders.checkingActiveOrder")}
+            <Text style={styles.subtitle}>
+              متابعة السائقين وأداء عمليات التوصيل
             </Text>
           </View>
-        )}
 
-        {!loadingActiveOrder && !showOrderCard && (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>{t("orders.noActiveOrder")}</Text>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.mapButton}
+            onPress={() => router.push("/maps")}
+          >
+            <Text style={styles.mapButtonText}>الخريطة</Text>
+          </TouchableOpacity>
+        </View>
 
-            <Text style={styles.emptyText}>{t("orders.tapAddOrder")}</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>السائقون النشطون</Text>
+
+            <Text style={styles.statValue}>{activeRiders}</Text>
           </View>
-        )}
 
-        {!loadingActiveOrder && showOrderCard && (
-          <View style={styles.card}>
-            <View style={styles.compactTopRow}>
-              <View style={styles.compactTitleBox}>
-                <Text style={styles.cardTitle}>
-                  {isDelivered ? t("orders.delivered") : t("orders.newOrder")}
-                </Text>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>طلبات اليوم</Text>
 
-                <Text style={styles.durationText}>{getDurationText()}</Text>
+            <Text style={styles.statValue}>{todayOrders}</Text>
+          </View>
 
-                {activeOrder?._id && (
-                  <Text style={styles.orderIdText}>
-                    #{activeOrder._id.slice(-6)}
-                  </Text>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>هذا الأسبوع</Text>
+
+            <Text style={styles.statValue}>{weekOrders}</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>هذا الشهر</Text>
+
+            <Text style={styles.statValue}>{monthOrders}</Text>
+          </View>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>السائقون</Text>
+
+            <Text style={styles.sectionCount}>{riders.length} سائق</Text>
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.addRiderButton}
+            onPress={() => setShowAddRider(true)}
+          >
+            <Text style={styles.addRiderButtonText}>+ إضافة سائق</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.ridersList}>
+          {riders.map((rider) => {
+            const expanded = expandedRiderId === rider.id;
+
+            return (
+              <View
+                key={rider.id}
+                style={[styles.riderCard, expanded && styles.riderCardExpanded]}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => toggleRider(rider.id)}
+                  style={styles.riderRow}
+                >
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>
+                      {rider.name.charAt(0)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.riderMain}>
+                    <Text style={styles.riderName}>{rider.name}</Text>
+
+                    <View style={styles.riderMetaRow}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          {
+                            backgroundColor: getStatusColor(rider.status),
+                          },
+                        ]}
+                      />
+
+                      <Text style={styles.riderMeta}>
+                        {getStatusText(rider.status)}
+                      </Text>
+
+                      <Text style={styles.separator}>•</Text>
+
+                      <Text style={styles.riderMeta}>
+                        بدأ {rider.startTime}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.todayBox}>
+                    <Text style={styles.todayNumber}>{rider.todayOrders}</Text>
+
+                    <Text style={styles.todayLabel}>اليوم</Text>
+                  </View>
+
+                  <Text style={styles.arrow}>{expanded ? "⌃" : "⌄"}</Text>
+                </TouchableOpacity>
+
+                {expanded && (
+                  <View style={styles.expandedContent}>
+                    <View style={styles.divider} />
+
+                    <View style={styles.detailsGrid}>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>وقت البدء</Text>
+
+                        <Text style={styles.detailValue}>
+                          {rider.startTime}
+                        </Text>
+                      </View>
+
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>مدة العمل</Text>
+
+                        <Text style={styles.detailValue}>
+                          {rider.hoursWorked}
+                        </Text>
+                      </View>
+
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>طلبات اليوم</Text>
+
+                        <Text style={styles.detailValue}>
+                          {rider.todayOrders}
+                        </Text>
+                      </View>
+
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>الأسبوع</Text>
+
+                        <Text style={styles.detailValue}>
+                          {rider.weekOrders}
+                        </Text>
+                      </View>
+
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>الشهر</Text>
+
+                        <Text style={styles.detailValue}>
+                          {rider.monthOrders}
+                        </Text>
+                      </View>
+
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>رقم الجوال</Text>
+
+                        <Text style={styles.detailValue}>{rider.phone}</Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      style={styles.locationButton}
+                      onPress={() => router.push("/maps")}
+                    >
+                      <Text style={styles.locationButtonText}>
+                        عرض موقع السائق
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => openCamera("pickup")}
-                disabled={uploadingPickup || uploadingDelivery || !!activeOrder}
-                style={[
-                  styles.smallPhotoButton,
-                  !!activeOrder && styles.disabledPhotoButton,
-                ]}
-              >
-                <View style={styles.smallImageBox}>
-                  {pickupPhoto ? (
-                    <Image
-                      source={{ uri: pickupPhoto.uri }}
-                      style={styles.smallImage}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <Text style={styles.photoIcon}>📦</Text>
-                  )}
-                </View>
-
-                <Text style={styles.smallPhotoLabel}>{t("orders.pickup")}</Text>
-
-                <Text style={styles.smallPhotoTime}>
-                  {uploadingPickup
-                    ? t("orders.saving")
-                    : pickupPhoto
-                      ? formatTime(pickupPhoto.time)
-                      : t("orders.take")}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => openCamera("delivery")}
-                disabled={
-                  uploadingPickup ||
-                  uploadingDelivery ||
-                  !activeOrder ||
-                  isDelivered
-                }
-                style={[
-                  styles.smallPhotoButton,
-                  (!activeOrder || isDelivered) && styles.disabledPhotoButton,
-                ]}
-              >
-                <View style={styles.smallImageBox}>
-                  {deliveryPhoto ? (
-                    <Image
-                      source={{ uri: deliveryPhoto.uri }}
-                      style={styles.smallImage}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <Text style={styles.photoIcon}>🏁</Text>
-                  )}
-                </View>
-
-                <Text style={styles.smallPhotoLabel}>
-                  {t("orders.deliver")}
-                </Text>
-
-                <Text style={styles.smallPhotoTime}>
-                  {uploadingDelivery
-                    ? t("orders.saving")
-                    : deliveryPhoto
-                      ? formatTime(deliveryPhoto.time)
-                      : t("orders.take")}
-                </Text>
-              </TouchableOpacity>
-
-              <Pressable onPress={resetLocalCard} style={styles.clearButton}>
-                <Text style={styles.clearButtonText}>×</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        <View style={styles.historySection}>
-          <Text style={styles.historyTitle}>{t("orders.orderHistory")}</Text>
-
-          {loadingOrders && (
-            <Text style={styles.historyEmptyText}>
-              {t("orders.loadingOrders")}
-            </Text>
-          )}
-
-          {!loadingOrders && orders.length === 0 && (
-            <Text style={styles.historyEmptyText}>
-              {t("orders.noCompletedOrders")}
-            </Text>
-          )}
-
-          {!loadingOrders &&
-            orders.map((order) => {
-              const isCompleted = order.status === "delivered";
-
-              return (
-                <View key={order._id} style={styles.historyCard}>
-                  <View style={styles.historyInfo}>
-                    <Text style={styles.historyStatus}>
-                      {isCompleted
-                        ? t("orders.delivered")
-                        : t("orders.inProgress")}
-                    </Text>
-
-                    <Text style={styles.historyId}>#{order._id.slice(-6)}</Text>
-
-                    <Text style={styles.historyTime}>
-                      {t("orders.pickup")}:{" "}
-                      {formatTime(safeDate(order.pickupTime))}
-                    </Text>
-
-                    {order.deliveryTime && (
-                      <Text style={styles.historyTime}>
-                        {t("orders.deliver")}:{" "}
-                        {formatTime(safeDate(order.deliveryTime))}
-                      </Text>
-                    )}
-
-                    <Text style={styles.historyDuration}>
-                      {order.durationSeconds != null
-                        ? formatDuration(order.durationSeconds)
-                        : t("orders.inProgress")}
-                    </Text>
-                  </View>
-
-                  <View style={styles.historyImages}>
-                    {order.pickupPhoto?.url && (
-                      <Image
-                        source={{ uri: order.pickupPhoto.url }}
-                        style={styles.historyImage}
-                        contentFit="cover"
-                      />
-                    )}
-
-                    {order.deliveryPhoto?.url && (
-                      <Image
-                        source={{ uri: order.deliveryPhoto.url }}
-                        style={styles.historyImage}
-                        contentFit="cover"
-                      />
-                    )}
-                  </View>
-                </View>
-              );
-            })}
+            );
+          })}
         </View>
+
+        <TouchableOpacity
+          style={styles.logout}
+          onPress={() => router.replace("/")}
+        >
+          <Text style={styles.logoutText}>تسجيل الخروج</Text>
+        </TouchableOpacity>
       </ScrollView>
 
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={createOrder}
-        disabled={uploadingPickup || uploadingDelivery}
-        style={styles.floatingButton}
-      >
-        <Text style={styles.floatingPlus}>+</Text>
-        <Text style={styles.floatingText}>{t("orders.addOrder")}</Text>
-      </TouchableOpacity>
+      {successMessage !== "" && (
+        <View style={styles.successMessage}>
+          <Text style={styles.successMessageText}>{successMessage}</Text>
+        </View>
+      )}
 
-      <Snackbar />
-    </SafeAreaView>
+      <Modal
+        visible={showAddRider}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAddRider}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity
+                style={styles.modalClose}
+                onPress={closeAddRider}
+              >
+                <Text style={styles.modalCloseText}>×</Text>
+              </TouchableOpacity>
+
+              <View style={styles.modalHeaderText}>
+                <Text style={styles.modalTitle}>إضافة سائق جديد</Text>
+
+                <Text style={styles.modalSubtitle}>
+                  أدخل بيانات حساب السائق
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.modalForm}>
+              <View>
+                <Text style={styles.inputLabel}>رقم السائق</Text>
+
+                <TextInput
+                  value={newRiderId}
+                  onChangeText={setNewRiderId}
+                  placeholder="مثال: 005"
+                  placeholderTextColor="#9590A8"
+                  keyboardType="number-pad"
+                  style={styles.input}
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>رقم الجوال</Text>
+
+                <TextInput
+                  value={newRiderPhone}
+                  onChangeText={setNewRiderPhone}
+                  placeholder="05xxxxxxxx"
+                  placeholderTextColor="#9590A8"
+                  keyboardType="phone-pad"
+                  style={styles.input}
+                />
+              </View>
+
+              <View>
+                <Text style={styles.inputLabel}>كلمة المرور</Text>
+
+                <TextInput
+                  value={newRiderPassword}
+                  onChangeText={setNewRiderPassword}
+                  placeholder="أدخل كلمة المرور"
+                  placeholderTextColor="#9590A8"
+                  secureTextEntry
+                  style={styles.input}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.cancelButton}
+                onPress={closeAddRider}
+              >
+                <Text style={styles.cancelButtonText}>إلغاء</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.saveButton}
+                onPress={addRider}
+              >
+                <Text style={styles.saveButtonText}>إضافة السائق</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#D0E5D5",
   },
 
-  scrollView: {
-    flex: 1,
-  },
-
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 128,
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 58,
+    paddingBottom: 36,
   },
 
   header: {
-    marginTop: 35,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  headerText: {
+    flex: 1,
+    alignItems: "flex-end",
   },
 
   title: {
-    fontSize: 28,
+    fontSize: 27,
     fontWeight: "800",
-    color: "#0f172a",
+    color: "#634B66",
+    textAlign: "right",
   },
 
   subtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#64748b",
+    marginTop: 5,
+    fontSize: 12,
+    color: "#9590A8",
+    textAlign: "right",
   },
 
-  emptyCard: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "#cbd5e1",
-    borderRadius: 20,
-    padding: 24,
+  mapButton: {
+    marginRight: 14,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "#634B66",
   },
 
-  emptyTitle: {
-    textAlign: "center",
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e293b",
+  mapButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 12,
   },
 
-  emptyText: {
-    marginTop: 6,
-    textAlign: "center",
-    fontSize: 13,
-    color: "#64748b",
-  },
-
-  card: {
-    minHeight: 100,
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    padding: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    elevation: 4,
-  },
-
-  compactTopRow: {
-    height: 80,
-    flexDirection: "row",
-    alignItems: "center",
+  statsGrid: {
+    marginTop: 20,
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
     gap: 8,
   },
 
-  compactTitleBox: {
-    flex: 1,
+  statCard: {
+    width: "48.5%",
+    minHeight: 80,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 13,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#BBCBCB",
+  },
+
+  statLabel: {
+    fontSize: 11,
+    color: "#9590A8",
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  statValue: {
+    marginTop: 5,
+    fontSize: 23,
+    fontWeight: "800",
+    color: "#634B66",
+  },
+
+  sectionHeader: {
+    marginTop: 24,
+    marginBottom: 9,
+    flexDirection: "row-reverse",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#634B66",
+    textAlign: "right",
+  },
+
+  sectionCount: {
+    marginTop: 2,
+    fontSize: 10,
+    color: "#9590A8",
+    textAlign: "right",
+  },
+
+  addRiderButton: {
+    paddingHorizontal: 13,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#634B66",
+    alignItems: "center",
     justifyContent: "center",
   },
 
-  cardTitle: {
-    fontSize: 15,
+  addRiderButtonText: {
+    color: "#FFFFFF",
+    fontSize: 11,
     fontWeight: "800",
-    color: "#0f172a",
   },
 
-  durationText: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#2563eb",
+  ridersList: {
+    gap: 8,
   },
 
-  orderIdText: {
-    marginTop: 2,
-    fontSize: 9,
-    color: "#94a3b8",
-  },
-
-  smallPhotoButton: {
-    width: 74,
-    height: 80,
+  riderCard: {
+    backgroundColor: "#FFFFFF",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 5,
-  },
-
-  disabledPhotoButton: {
-    opacity: 0.65,
-  },
-
-  smallImageBox: {
-    width: 38,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: "#BBCBCB",
     overflow: "hidden",
-    marginBottom: 4,
   },
 
-  smallImage: {
-    width: "100%",
-    height: "100%",
+  riderCardExpanded: {
+    borderColor: "#634B66",
   },
 
-  photoIcon: {
-    fontSize: 21,
+  riderRow: {
+    minHeight: 62,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    flexDirection: "row-reverse",
+    alignItems: "center",
   },
 
-  smallPhotoLabel: {
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#D0E5D5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  avatarText: {
+    fontWeight: "800",
+    color: "#634B66",
+    fontSize: 14,
+  },
+
+  riderMain: {
+    flex: 1,
+    marginRight: 10,
+    alignItems: "flex-end",
+  },
+
+  riderName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#634B66",
+    textAlign: "right",
+  },
+
+  riderMetaRow: {
+    marginTop: 4,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+  },
+
+  riderMeta: {
     fontSize: 10,
-    fontWeight: "800",
-    color: "#1e293b",
+    color: "#9590A8",
   },
 
-  smallPhotoTime: {
-    marginTop: 1,
-    fontSize: 9,
-    color: "#64748b",
+  separator: {
+    marginHorizontal: 5,
+    fontSize: 10,
+    color: "#BBCBCB",
   },
 
-  clearButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#f1f5f9",
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginLeft: 5,
+  },
+
+  todayBox: {
     alignItems: "center",
-    justifyContent: "center",
+    marginHorizontal: 10,
+    minWidth: 34,
   },
 
-  clearButtonText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#64748b",
-    lineHeight: 20,
-  },
-
-  floatingButton: {
-    position: "absolute",
-    right: 20,
-    bottom: 32,
-    height: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    backgroundColor: "#2563eb",
-    paddingHorizontal: 22,
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    elevation: 8,
-  },
-
-  floatingPlus: {
-    marginRight: 8,
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#ffffff",
-  },
-
-  floatingText: {
+  todayNumber: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#ffffff",
+    color: "#634B66",
   },
 
-  historySection: {
-    marginTop: 22,
+  todayLabel: {
+    marginTop: 1,
+    fontSize: 8,
+    color: "#9590A8",
   },
 
-  historyTitle: {
-    marginBottom: 10,
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#0f172a",
+  arrow: {
+    width: 20,
+    textAlign: "center",
+    fontSize: 17,
+    color: "#9590A8",
   },
 
-  historyEmptyText: {
-    fontSize: 13,
-    color: "#64748b",
+  expandedContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
 
-  historyCard: {
-    marginBottom: 10,
-    minHeight: 86,
-    borderRadius: 18,
-    backgroundColor: "#ffffff",
+  divider: {
+    height: 1,
+    backgroundColor: "#BBCBCB",
+    opacity: 0.65,
+    marginBottom: 12,
+  },
+
+  detailsGrid: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  detailItem: {
+    width: "48.5%",
     padding: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    elevation: 3,
+    borderRadius: 10,
+    backgroundColor: "#D0E5D5",
+    alignItems: "flex-end",
   },
 
-  historyInfo: {
-    flex: 1,
-    paddingRight: 10,
+  detailLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#9590A8",
+    textAlign: "right",
   },
 
-  historyStatus: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-
-  historyId: {
-    marginTop: 2,
-    fontSize: 10,
-    color: "#94a3b8",
-  },
-
-  historyTime: {
-    marginTop: 2,
-    fontSize: 10,
-    color: "#64748b",
-  },
-
-  historyDuration: {
+  detailValue: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: "800",
-    color: "#2563eb",
+    color: "#634B66",
+    textAlign: "right",
   },
 
-  historyImages: {
-    flexDirection: "row",
-    gap: 6,
-  },
-
-  historyImage: {
-    width: 42,
-    height: 42,
+  locationButton: {
+    marginTop: 11,
+    height: 40,
     borderRadius: 10,
-    backgroundColor: "#f1f5f9",
-  },
-
-  snackbar: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    bottom: 28,
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: "#634B66",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    elevation: 8,
   },
 
-  snackbarSuccess: {
-    backgroundColor: "#16a34a",
+  locationButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "800",
   },
 
-  snackbarError: {
-    backgroundColor: "#dc2626",
+  logout: {
+    marginTop: 22,
+    alignItems: "center",
+    paddingVertical: 10,
   },
 
-  snackbarInfo: {
-    backgroundColor: "#0f172a",
+  logoutText: {
+    color: "#634B66",
+    fontSize: 12,
+    fontWeight: "800",
   },
 
-  snackbarText: {
-    color: "#ffffff",
-    fontSize: 14,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(38, 30, 40, 0.40)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#BBCBCB",
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+
+  modalHeaderText: {
+    flex: 1,
+    alignItems: "flex-end",
+    marginLeft: 14,
+  },
+
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: "#634B66",
+    textAlign: "right",
+  },
+
+  modalSubtitle: {
+    marginTop: 4,
+    fontSize: 11,
+    color: "#9590A8",
+    textAlign: "right",
+  },
+
+  modalClose: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#D0E5D5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalCloseText: {
+    fontSize: 19,
+    color: "#634B66",
+  },
+
+  modalForm: {
+    marginTop: 20,
+    gap: 13,
+  },
+
+  inputLabel: {
+    marginBottom: 6,
+    fontSize: 11,
     fontWeight: "700",
+    color: "#634B66",
+    textAlign: "right",
+  },
+
+  input: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#BBCBCB",
+    borderRadius: 10,
+    backgroundColor: "#F9FBFA",
+    paddingHorizontal: 12,
+    color: "#634B66",
+    fontSize: 13,
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
+
+  modalActions: {
+    marginTop: 20,
+    flexDirection: "row-reverse",
+    gap: 8,
+  },
+
+  saveButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#634B66",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  saveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  cancelButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#D0E5D5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  cancelButtonText: {
+    color: "#634B66",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  successMessage: {
+    position: "absolute",
+    top: 55,
+    left: 20,
+    right: 20,
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: "#634B66",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+
+  successMessageText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
     textAlign: "center",
   },
 });

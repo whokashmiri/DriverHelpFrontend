@@ -1,12 +1,38 @@
-import { api, saveToken } from "./client";
+import { api, removeToken, saveToken } from "./client";
 
-type AuthPayload = {
+export type UserRole = "driver" | "supervisor" | "admin";
+
+export interface AuthUser {
+  id: string;
+  iqamaId: string;
+  name: string;
+  role: UserRole;
+  isActive: boolean;
+  supervisor?: string | null;
+  lastLoginAt?: string | null;
+  createdAt?: string;
+}
+
+export interface LoginPayload {
   iqamaId: string;
   password: string;
-};
+}
 
-export async function login(payload: AuthPayload) {
-  const response = await api.post("/auth/login", payload);
+export interface RegisterPayload {
+  name: string;
+  iqamaId: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  token: string;
+
+  user: AuthUser;
+}
+
+export async function login(payload: LoginPayload) {
+  const response = await api.post<AuthResponse>("/auth/login", payload);
 
   const token = response.data?.token;
 
@@ -17,15 +43,26 @@ export async function login(payload: AuthPayload) {
   return response.data;
 }
 
-export async function register(payload: AuthPayload) {
-  const response = await api.post("/auth/register", payload);
+export async function register(payload: RegisterPayload) {
+  const response = await api.post<AuthResponse>("/auth/register", payload);
 
-  // Do not save token after register.
-  // User should login manually after successful registration.
+  /**
+   * Don't save token.
+   *
+   * User logs in manually after registration.
+   */
   return response.data;
 }
 
 export async function getMe() {
-  const response = await api.get("/auth/me");
+  const response = await api.get<{
+    success: boolean;
+    user: AuthUser;
+  }>("/auth/me");
+
   return response.data;
+}
+
+export async function logout() {
+  await removeToken();
 }

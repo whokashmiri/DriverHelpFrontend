@@ -1,8 +1,6 @@
 import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -12,596 +10,204 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useFocusEffect } from "expo-router";
-import { getMe, login, register } from "../api/authApi";
-import { getToken, removeToken } from "../api/client";
-
-type AuthMode = "login" | "register";
-type SnackbarType = "success" | "error" | "info";
-
-export default function HomeScreen() {
-  const { t } = useTranslation();
+export default function LoginScreen() {
   const router = useRouter();
 
-  const [mode, setMode] = useState<AuthMode>("login");
-  const [iqamaId, setIqamaId] = useState("");
+  const [id, setId] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [checkingToken, setCheckingToken] = useState(true);
-  const [alreadyLoggedIn, setAlreadyLoggedIn] = useState(false);
-
-  const [snackbar, setSnackbar] = useState<{
-    visible: boolean;
-    message: string;
-    type: SnackbarType;
-  }>({
-    visible: false,
-    message: "",
-    type: "info",
-  });
-
-  const isRegister = mode === "register";
-
-  useFocusEffect(
-    useCallback(() => {
-      checkSavedLogin();
-    }, []),
-  );
-
-  function showSnackbar(message: string, type: SnackbarType = "info") {
-    setSnackbar({
-      visible: true,
-      message,
-      type,
-    });
-
-    setTimeout(() => {
-      setSnackbar((current) => ({
-        ...current,
-        visible: false,
-      }));
-    }, 3000);
-  }
-
-  async function checkSavedLogin() {
-    try {
-      const token = await getToken();
-
-      if (!token) {
-        setAlreadyLoggedIn(false);
-        setCheckingToken(false);
-        return;
-      }
-
-      await getMe();
-
-      setAlreadyLoggedIn(true);
-      setCheckingToken(false);
-    } catch (error) {
-      await removeToken();
-      setAlreadyLoggedIn(false);
-      setCheckingToken(false);
-    }
-  }
-
-  async function handleSignOut() {
-    await removeToken();
-
-    setAlreadyLoggedIn(false);
-    setIqamaId("");
-    setPassword("");
-    setMode("login");
-
-    showSnackbar(t("auth.signedOut"), "success");
-  }
-
-  function validateForm() {
-    if (!iqamaId.trim()) {
-      showSnackbar(t("auth.missingIqamaMessage"), "error");
-      return false;
+  function login() {
+    if (id === "123456" && password === "123456") {
+      setError("");
+      router.replace("/explore");
+      return;
     }
 
-    if (iqamaId.trim().length < 5) {
-      showSnackbar(t("auth.invalidIqamaMessage"), "error");
-      return false;
-    }
-
-    if (!password.trim()) {
-      showSnackbar(t("auth.missingPasswordMessage"), "error");
-      return false;
-    }
-
-    if (password.length < 6) {
-      showSnackbar(t("auth.weakPasswordMessage"), "error");
-      return false;
-    }
-
-    return true;
-  }
-
-  async function handleSubmit() {
-    if (!validateForm()) return;
-
-    setLoading(true);
-
-    try {
-      const payload = {
-        iqamaId: iqamaId.trim(),
-        password,
-      };
-
-      if (isRegister) {
-        await register(payload);
-
-        await removeToken();
-
-        showSnackbar(t("auth.registerSuccess"), "success");
-
-        setMode("login");
-        setPassword("");
-        setShowPassword(false);
-        setAlreadyLoggedIn(false);
-
-        return;
-      }
-
-      await login(payload);
-
-      showSnackbar(t("auth.loginSuccess"), "success");
-
-      setAlreadyLoggedIn(true);
-
-      setTimeout(() => {
-        router.replace("/explore");
-      }, 600);
-    } catch (error: any) {
-      const backendMessage =
-        error?.response?.data?.message || error?.response?.data?.error;
-
-      const message =
-        backendMessage ||
-        (isRegister ? t("auth.registerFailed") : t("auth.loginFailed"));
-
-      showSnackbar(message, "error");
-    } finally {
-      setLoading(false);
-    }
-  }
-  function switchMode() {
-    if (loading) return;
-
-    setMode((current) => (current === "login" ? "register" : "login"));
-    setPassword("");
-    setShowPassword(false);
-  }
-
-  function Snackbar() {
-    if (!snackbar.visible) return null;
-
-    return (
-      <View
-        style={[
-          styles.snackbar,
-          snackbar.type === "success" && styles.snackbarSuccess,
-          snackbar.type === "error" && styles.snackbarError,
-          snackbar.type === "info" && styles.snackbarInfo,
-        ]}
-      >
-        <Text style={styles.snackbarText}>{snackbar.message}</Text>
-      </View>
-    );
-  }
-
-  if (checkingToken) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.loadingText}>{t("auth.checkingLogin")}</Text>
-        </View>
-
-        <Snackbar />
-      </SafeAreaView>
-    );
-  }
-
-  if (alreadyLoggedIn) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loggedInContainer}>
-          <View style={styles.loggedInCard}>
-            <Text style={styles.loggedInTitle}>
-              {t("auth.alreadyLoggedIn")}
-            </Text>
-
-            <Text style={styles.loggedInSubtitle}>
-              {t("auth.alreadyLoggedInSubtitle")}
-            </Text>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => router.replace("/explore")}
-              style={styles.continueButton}
-            >
-              <Text style={styles.continueButtonText}>
-                {t("auth.continueToOrders")}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleSignOut}
-              style={styles.signOutButton}
-            >
-              <Text style={styles.signOutButtonText}>{t("auth.signOut")}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <Snackbar />
-      </SafeAreaView>
-    );
+    setError("رقم المستخدم أو كلمة المرور غير صحيحة");
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={styles.card}>
           <View style={styles.header}>
-            <Text style={styles.title}>
-              {isRegister ? t("auth.createAccount") : t("auth.welcomeBack")}
-            </Text>
+            <Text style={styles.title}>تطبيق التوصيل</Text>
 
             <Text style={styles.subtitle}>
-              {isRegister
-                ? t("auth.registerSubtitle")
-                : t("auth.loginSubtitle")}
+              سجل الدخول لإدارة السائقين وعمليات التوصيل
             </Text>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.label}>{t("auth.iqamaId")}</Text>
+          <View style={styles.form}>
+            <View>
+              <Text style={styles.label}>رقم المستخدم</Text>
 
-            <TextInput
-              value={iqamaId}
-              onChangeText={setIqamaId}
-              placeholder={t("auth.enterIqamaId")}
-              keyboardType="number-pad"
-              maxLength={10}
-              style={styles.input}
-              placeholderTextColor="#94a3b8"
-            />
-
-            <View style={styles.inputGap} />
-
-            <Text style={styles.label}>{t("auth.password")}</Text>
-
-            <View style={styles.passwordInputWrap}>
               <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder={t("auth.enterPassword")}
-                secureTextEntry={!showPassword}
-                style={styles.passwordInput}
-                placeholderTextColor="#94a3b8"
+                value={id}
+                onChangeText={(value) => {
+                  setId(value);
+                  setError("");
+                }}
+                placeholder="أدخل رقم المستخدم"
+                placeholderTextColor="#9590A8"
+                keyboardType="number-pad"
+                returnKeyType="next"
+                style={styles.input}
               />
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setShowPassword((current) => !current)}
-                style={styles.passwordToggle}
-              >
-                <Text style={styles.passwordToggleText}>
-                  {showPassword
-                    ? t("auth.hidePassword")
-                    : t("auth.showPassword")}
-                </Text>
-              </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleSubmit}
-              disabled={loading}
-              style={[
-                styles.submitButton,
-                loading && styles.submitButtonDisabled,
-              ]}
-            >
-              <Text style={styles.submitButtonText}>
-                {loading
-                  ? isRegister
-                    ? t("auth.creating")
-                    : t("auth.checking")
-                  : isRegister
-                    ? t("auth.register")
-                    : t("auth.login")}
-              </Text>
-            </TouchableOpacity>
+            <View>
+              <Text style={styles.label}>كلمة المرور</Text>
+
+              <TextInput
+                value={password}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  setError("");
+                }}
+                placeholder="أدخل كلمة المرور"
+                placeholderTextColor="#9590A8"
+                secureTextEntry
+                returnKeyType="done"
+                onSubmitEditing={login}
+                style={styles.input}
+              />
+            </View>
+
+            {!!error && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
 
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={switchMode}
-              disabled={loading}
-              style={styles.switchButton}
+              style={styles.button}
+              onPress={login}
             >
-              <Text style={styles.switchText}>
-                {isRegister ? t("auth.haveAccount") : t("auth.noAccount")}
-              </Text>
+              <Text style={styles.buttonText}>تسجيل الدخول</Text>
             </TouchableOpacity>
+
+            <Text style={styles.demoText}>
+              الحساب التجريبي: 123456 / 123456
+            </Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      <Snackbar />
-    </SafeAreaView>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#64748b",
-  },
-
-  loggedInContainer: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-
-  loggedInCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    padding: 22,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    elevation: 4,
-  },
-
-  loggedInTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#0f172a",
-    textAlign: "center",
-  },
-
-  loggedInSubtitle: {
-    marginTop: 10,
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#64748b",
-    textAlign: "center",
-  },
-
-  continueButton: {
-    marginTop: 22,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: "#2563eb",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  continueButtonText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#ffffff",
-  },
-
-  signOutButton: {
-    marginTop: 12,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: "#fee2e2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  signOutButtonText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#dc2626",
-  },
-
-  keyboardView: {
-    flex: 1,
-  },
-
-  scrollView: {
-    flex: 1,
-  },
-
-  passwordInputWrap: {
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-    flexDirection: "row",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-
-  passwordInput: {
-    flex: 1,
-    height: "100%",
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: "#0f172a",
-  },
-
-  passwordToggle: {
-    height: "100%",
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  passwordToggleText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#2563eb",
+    backgroundColor: "#D0E5D5",
   },
 
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 32,
-  },
-
-  header: {
-    marginBottom: 32,
-  },
-
-  title: {
-    fontSize: 30,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-
-  subtitle: {
-    marginTop: 8,
-    fontSize: 16,
-    lineHeight: 22,
-    color: "#64748b",
+    paddingHorizontal: 22,
+    paddingVertical: 40,
   },
 
   card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    elevation: 4,
+    width: "100%",
+    maxWidth: 420,
+    alignSelf: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: "#BBCBCB",
+  },
+
+  header: {
+    marginBottom: 26,
+    alignItems: "flex-end",
+  },
+
+  title: {
+    fontSize: 29,
+    fontWeight: "800",
+    color: "#634B66",
+    textAlign: "right",
+  },
+
+  subtitle: {
+    marginTop: 7,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#9590A8",
+    textAlign: "right",
+  },
+
+  form: {
+    gap: 16,
   },
 
   label: {
-    marginBottom: 8,
-    fontSize: 14,
+    marginBottom: 7,
+    fontSize: 13,
     fontWeight: "700",
-    color: "#334155",
+    color: "#634B66",
+    textAlign: "right",
   },
 
   input: {
-    height: 56,
-    borderRadius: 16,
+    height: 46,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: "#0f172a",
+    borderColor: "#BBCBCB",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#F9FBFA",
+    fontSize: 14,
+    color: "#634B66",
+    textAlign: "right",
+    writingDirection: "rtl",
   },
 
-  inputGap: {
-    height: 16,
+  errorBox: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "#FCE8E8",
   },
 
-  submitButton: {
-    marginTop: 22,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: "#2563eb",
+  errorText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#B54747",
+    textAlign: "right",
+  },
+
+  button: {
+    height: 48,
+    marginTop: 4,
+    borderRadius: 12,
+    backgroundColor: "#634B66",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  submitButtonDisabled: {
-    backgroundColor: "#93c5fd",
-  },
-
-  submitButtonText: {
-    fontSize: 16,
+  buttonText: {
+    color: "#FFFFFF",
     fontWeight: "800",
-    color: "#ffffff",
+    fontSize: 15,
   },
 
-  switchButton: {
-    marginTop: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  switchText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#2563eb",
-  },
-
-  snackbar: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    bottom: 28,
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    elevation: 8,
-  },
-
-  snackbarSuccess: {
-    backgroundColor: "#16a34a",
-  },
-
-  snackbarError: {
-    backgroundColor: "#dc2626",
-  },
-
-  snackbarInfo: {
-    backgroundColor: "#0f172a",
-  },
-
-  snackbarText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "700",
+  demoText: {
     textAlign: "center",
+    fontSize: 11,
+    color: "#9590A8",
   },
 });
