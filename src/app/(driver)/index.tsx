@@ -1,0 +1,1957 @@
+import { useCallback, useEffect, useState } from "react";
+
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import * as ImagePicker from "expo-image-picker";
+
+import { useFocusEffect } from "expo-router";
+
+import { useTranslation } from "react-i18next";
+
+import { Pencil } from "lucide-react-native";
+
+import { AppScreen } from "../../components/AppScreen";
+
+import {
+  completeOrderDelivery,
+  createPickupOrder,
+  getActiveOrder,
+  getMyOrders,
+} from "../../api/orderApi";
+
+import { getMyShifts } from "../../api/shiftApi";
+import { getMyDashboardStats } from "../../api/statsApi";
+
+import { useAuth } from "../../hooks/useAuth";
+import { useLocationTracking } from "../../hooks/useLocationTracking";
+import { useShift } from "../../hooks/useShift";
+
+import { useLanguage } from "../../context/LanguageContext";
+
+import type { Order, OrderPhotoInput } from "../../types/order";
+
+import type { DriverShift } from "../../types/shift";
+
+import type { MyDashboardStatsResponse } from "../../types/stats";
+
+import { formatDateTime, getErrorMessage } from "../../utils";
+
+const COLORS = {
+  black: "#0A090C",
+  light: "#F0EDEE",
+  primary: "#07393C",
+  secondary: "#2C666E",
+  white: "#FFFFFF",
+
+  border: "#CAD4D4",
+  muted: "#667577",
+
+  error: "#B91C1C",
+  errorBackground: "#FDECEC",
+
+  success: "#166534",
+  successLight: "#EAF7EE",
+};
+
+type DriverTabName = "home" | "orders" | "shifts" | "stats";
+
+export default function DriverHomeScreen() {
+  const { t } = useTranslation();
+
+  const { user } = useAuth();
+
+  const { language } = useLanguage();
+
+  const {
+    isWorking,
+    timer,
+
+    startShift,
+    endShift,
+
+    isStarting,
+    isEnding,
+  } = useShift(language);
+
+  useLocationTracking({
+    enabled: isWorking,
+  });
+
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  const [shifts, setShifts] = useState<DriverShift[]>([]);
+
+  const [stats, setStats] = useState<MyDashboardStatsResponse | null>(null);
+
+  const [tab, setTab] = useState<DriverTabName>("home");
+
+  const [pickupPhoto, setPickupPhoto] = useState<OrderPhotoInput | null>(null);
+
+  const [deliveryPhoto, setDeliveryPhoto] = useState<OrderPhotoInput | null>(
+    null,
+  );
+
+  const [orderNotes, setOrderNotes] = useState("");
+
+  const [notesExpanded, setNotesExpanded] = useState(false);
+
+  const [uploadingPickup, setUploadingPickup] = useState(false);
+
+  const [uploadingDelivery, setUploadingDelivery] = useState(false);
+
+  const [orderElapsedSeconds, setOrderElapsedSeconds] = useState(0);
+
+  const [isLoadingOrder, setIsLoadingOrder] = useState(true);
+
+  const [orderError, setOrderError] = useState<string | null>(null);
+
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  const loadOrders = useCallback(async () => {
+    try {
+      setOrderError(null);
+      setIsLoadingOrder(true);
+
+      const [activeResponse, ordersResponse] = await Promise.all([
+        getActiveOrder(),
+        getMyOrders(),
+      ]);
+
+      const active = activeResponse.order;
+
+      const orderList = ordersResponse.orders ?? [];
+
+      setActiveOrder(active);
+
+      setOrders(orderList);
+
+      if (active) {
+        setOrderNotes(active.notes ?? "");
+
+        if (active.pickupPhoto?.url) {
+          setPickupPhoto({
+            uri: active.pickupPhoto.url,
+
+            time: safeDate(active.pickupPhoto.takenAt || active.pickupTime),
+          });
+        }
+
+        if (active.deliveryPhoto?.url) {
+          setDeliveryPhoto({
+            uri: active.deliveryPhoto.url,
+
+            time: safeDate(active.deliveryPhoto.takenAt || active.deliveryTime),
+          });
+        } else {
+          setDeliveryPhoto(null);
+        }
+      } else {
+        setPickupPhoto(null);
+        setDeliveryPhoto(null);
+        setOrderNotes("");
+        setOrderElapsedSeconds(0);
+        setNotesExpanded(false);
+      }
+    } catch (error) {
+      setOrderError(
+        getErrorMessage(
+          error,
+          t("driver.activeOrderFailed", "Unable to load orders"),
+        ),
+      );
+    } finally {
+      setIsLoadingOrder(false);
+    }
+  }, [t]);
+
+  const loadShifts = useCallback(async () => {
+    try {
+      const response = await getMyShifts();
+
+      setShifts(response.shifts ?? []);
+    } catch (error) {
+      setOrderError(
+        getErrorMessage(error, t("shifts.loadFailed", "Unable to load shifts")),
+      );
+    }
+  }, [t]);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await getMyDashboardStats();
+
+      setStats(response);
+    } catch (error) {
+      setOrderError(
+        getErrorMessage(
+          error,
+          t("stats.loadFailed", "Unable to load statistics"),
+        ),
+      );
+    }
+  }, [t]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadOrders();
+    }, [loadOrders]),
+  );
+
+  useEffect(() => {
+    if (tab === "shifts") {
+      void loadShifts();
+    }
+
+    if (tab === "stats") {
+      void loadStats();
+    }
+  }, [tab, loadShifts, loadStats]);
+
+  /*
+   * Live order timer.
+   */
+  useEffect(() => {
+    if (!activeOrder) {
+      setOrderElapsedSeconds(0);
+
+      return;
+    }
+
+    if (activeOrder.status === "delivered") {
+      setOrderElapsedSeconds(activeOrder.durationSeconds ?? 0);
+
+      return;
+    }
+
+    const updateTimer = () => {
+      const pickupTime = new Date(activeOrder.pickupTime).getTime();
+
+      if (Number.isNaN(pickupTime)) {
+        return;
+      }
+
+      const elapsed = Math.max(0, Math.floor((Date.now() - pickupTime) / 1000));
+
+      setOrderElapsedSeconds(elapsed);
+    };
+
+    updateTimer();
+
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [activeOrder]);
+
+  const handleStartShift = async () => {
+    try {
+      await startShift();
+    } catch {
+      // handled by hook
+    }
+  };
+
+  const handleEndShift = async () => {
+    try {
+      await endShift();
+    } catch {
+      // handled by hook
+    }
+  };
+
+  const takeOrderPhoto = async (type: "pickup" | "delivery") => {
+    try {
+      setOrderError(null);
+
+      if (type === "pickup" && activeOrder) {
+        return;
+      }
+
+      if (type === "pickup" && !isWorking) {
+        setOrderError(t("driver.startShiftFirst", "Start your shift first"));
+
+        return;
+      }
+
+      if (type === "delivery" && !activeOrder) {
+        return;
+      }
+
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          t("common.permissionRequired", "Permission Required"),
+          t("orders.cameraPermission", "Camera permission is required."),
+        );
+
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+
+        allowsEditing: false,
+
+        quality: 0.65,
+
+        cameraType: ImagePicker.CameraType.back,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets?.[0];
+
+      if (!asset?.uri) {
+        setOrderError(
+          t("orders.photoFailed", "Unable to read captured photo."),
+        );
+
+        return;
+      }
+
+      const photo: OrderPhotoInput = {
+        uri: asset.uri,
+        time: new Date(),
+      };
+
+      if (type === "pickup") {
+        await uploadPickup(photo);
+
+        return;
+      }
+
+      await uploadDelivery(photo);
+    } catch (error) {
+      setOrderError(
+        getErrorMessage(
+          error,
+          t("orders.photoFailed", "Unable to capture photo"),
+        ),
+      );
+    }
+  };
+
+  const uploadPickup = async (photo: OrderPhotoInput) => {
+    try {
+      setUploadingPickup(true);
+
+      setOrderError(null);
+
+      setPickupPhoto(photo);
+
+      const response = await createPickupOrder({
+        pickupPhoto: photo,
+
+        notes: orderNotes.trim() || undefined,
+      });
+
+      const createdOrder = response.order;
+
+      setActiveOrder(createdOrder);
+
+      setOrders((current) => [
+        createdOrder,
+
+        ...current.filter((order) => order._id !== createdOrder._id),
+      ]);
+
+      setOrderNotes(createdOrder.notes ?? orderNotes);
+
+      if (createdOrder.pickupPhoto?.url) {
+        setPickupPhoto({
+          uri: createdOrder.pickupPhoto.url,
+
+          time: safeDate(
+            createdOrder.pickupPhoto.takenAt || createdOrder.pickupTime,
+          ),
+        });
+      }
+
+      setDeliveryPhoto(null);
+
+      setOrderElapsedSeconds(0);
+    } catch (error) {
+      setPickupPhoto(null);
+
+      setOrderError(
+        getErrorMessage(
+          error,
+          t("orders.pickupUploadFailed", "Unable to save pickup photo"),
+        ),
+      );
+    } finally {
+      setUploadingPickup(false);
+    }
+  };
+
+  const uploadDelivery = async (photo: OrderPhotoInput) => {
+    if (!activeOrder?._id) {
+      return;
+    }
+
+    try {
+      setUploadingDelivery(true);
+
+      setOrderError(null);
+
+      setDeliveryPhoto(photo);
+
+      const response = await completeOrderDelivery({
+        orderId: activeOrder._id,
+
+        deliveryPhoto: photo,
+      });
+
+      const completedOrder = response.order;
+
+      setOrders((current) => [
+        completedOrder,
+
+        ...current.filter((order) => order._id !== completedOrder._id),
+      ]);
+
+      setOrderElapsedSeconds(completedOrder.durationSeconds ?? 0);
+
+      setActiveOrder(null);
+
+      setPickupPhoto(null);
+      setDeliveryPhoto(null);
+
+      setOrderNotes("");
+      setNotesExpanded(false);
+    } catch (error) {
+      setDeliveryPhoto(null);
+
+      setOrderError(
+        getErrorMessage(
+          error,
+          t("orders.deliveryUploadFailed", "Unable to complete delivery"),
+        ),
+      );
+    } finally {
+      setUploadingDelivery(false);
+    }
+  };
+
+  const isArabic = language === "ar";
+
+  return (
+    <AppScreen>
+      <View style={styles.root}>
+        {/* FIXED HEADER */}
+        <View style={styles.fixedHeader}>
+          <Text
+            style={[
+              styles.greeting,
+              {
+                textAlign: isArabic ? "right" : "left",
+              },
+            ]}
+          >
+            {t("driver.welcome", "Welcome")}
+            {user?.name ? `, ${user.name}` : ""}
+          </Text>
+
+          <DriverTabs activeTab={tab} onChange={setTab} />
+        </View>
+
+        {/* ONLY CONTENT SCROLLS */}
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {tab === "home" && (
+            <View style={styles.homeContent}>
+              <RecentOrders
+                orders={orders}
+                activeOrder={activeOrder}
+                language={language}
+                expandedOrderId={expandedOrderId}
+                setExpandedOrderId={setExpandedOrderId}
+              />
+
+              <InlineOrderCreator
+                activeOrder={activeOrder}
+                pickupPhoto={pickupPhoto}
+                deliveryPhoto={deliveryPhoto}
+                elapsedSeconds={orderElapsedSeconds}
+                notes={orderNotes}
+                setNotes={setOrderNotes}
+                notesExpanded={notesExpanded}
+                setNotesExpanded={setNotesExpanded}
+                uploadingPickup={uploadingPickup}
+                uploadingDelivery={uploadingDelivery}
+                isWorking={isWorking}
+                error={orderError}
+                onPickup={() => void takeOrderPhoto("pickup")}
+                onDelivery={() => void takeOrderPhoto("delivery")}
+              />
+
+              <ShiftControl
+                isWorking={isWorking}
+                timer={timer}
+                isStarting={isStarting}
+                isEnding={isEnding}
+                onStart={handleStartShift}
+                onEnd={handleEndShift}
+              />
+            </View>
+          )}
+
+          {tab === "orders" && (
+            <OrdersPanel
+              orders={orders}
+              activeOrder={activeOrder}
+              language={language}
+              expandedOrderId={expandedOrderId}
+              setExpandedOrderId={setExpandedOrderId}
+              isLoading={isLoadingOrder}
+            />
+          )}
+
+          {tab === "shifts" && (
+            <ShiftsPanel shifts={shifts} language={language} />
+          )}
+
+          {tab === "stats" && <StatsPanel stats={stats} />}
+        </ScrollView>
+      </View>
+    </AppScreen>
+  );
+}
+
+function InlineOrderCreator({
+  activeOrder,
+  pickupPhoto,
+  deliveryPhoto,
+  elapsedSeconds,
+  notes,
+  setNotes,
+  notesExpanded,
+  setNotesExpanded,
+  uploadingPickup,
+  uploadingDelivery,
+  isWorking,
+  error,
+  onPickup,
+  onDelivery,
+}: {
+  activeOrder: Order | null;
+
+  pickupPhoto: OrderPhotoInput | null;
+
+  deliveryPhoto: OrderPhotoInput | null;
+
+  elapsedSeconds: number;
+
+  notes: string;
+
+  setNotes: (value: string) => void;
+
+  notesExpanded: boolean;
+
+  setNotesExpanded: (value: boolean) => void;
+
+  uploadingPickup: boolean;
+
+  uploadingDelivery: boolean;
+
+  isWorking: boolean;
+
+  error: string | null;
+
+  onPickup: () => void;
+
+  onDelivery: () => void;
+}) {
+  const { t } = useTranslation();
+
+  const isBusy = uploadingPickup || uploadingDelivery;
+
+  return (
+    <View style={styles.inlineOrderCard}>
+      <View style={styles.inlineOrderHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.inlineOrderTitle}>
+            {activeOrder
+              ? t("driver.activeDelivery", "Active Delivery")
+              : t("driver.newOrder", "New Order")}
+          </Text>
+
+          <Text style={styles.inlineOrderTimer}>
+            {formatDuration(elapsedSeconds)}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => setNotesExpanded(!notesExpanded)}
+          style={({ pressed }) => [
+            styles.noteButton,
+            pressed && styles.buttonPressed,
+          ]}
+        >
+          <Pencil size={15} color={COLORS.primary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.inlinePhotoRow}>
+        <CompactPhotoButton
+          title={t("orders.pickup", "Pickup")}
+          photo={pickupPhoto}
+          loading={uploadingPickup}
+          disabled={!isWorking || !!activeOrder || isBusy}
+          onPress={onPickup}
+        />
+
+        <View style={styles.photoConnector}>
+          <View style={styles.photoConnectorLine} />
+
+          <Text style={styles.photoConnectorText}>→</Text>
+        </View>
+
+        <CompactPhotoButton
+          title={t("orders.deliveryPhoto", "Delivery")}
+          photo={deliveryPhoto}
+          loading={uploadingDelivery}
+          disabled={!activeOrder || isBusy}
+          onPress={onDelivery}
+        />
+      </View>
+
+      {notesExpanded && (
+        <View style={styles.notesEditor}>
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            editable={!activeOrder}
+            placeholder={t("orders.notesPlaceholder", "Add notes")}
+            placeholderTextColor={COLORS.muted}
+            multiline
+            maxLength={500}
+            style={[styles.notesInput, activeOrder && styles.notesInputLocked]}
+          />
+
+          <View style={styles.notesFooter}>
+            {activeOrder ? (
+              <Text style={styles.notesLockedText}>
+                {t("orders.notesSaved", "Saved with pickup")}
+              </Text>
+            ) : (
+              <Text style={styles.notesHint}>
+                {t(
+                  "orders.notesBeforePickup",
+                  "This note will be saved with the pickup.",
+                )}
+              </Text>
+            )}
+
+            <Text style={styles.characterCount}>{notes.length}/500</Text>
+          </View>
+        </View>
+      )}
+
+      {!!error && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {!isWorking && !activeOrder && (
+        <Text style={styles.startShiftHint}>
+          {t("driver.startShiftFirst", "Start your shift to create an order")}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function CompactPhotoButton({
+  title,
+  photo,
+  loading,
+  disabled,
+  onPress,
+}: {
+  title: string;
+
+  photo: OrderPhotoInput | null;
+
+  loading: boolean;
+
+  disabled: boolean;
+
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.compactPhotoButton,
+
+        disabled && styles.compactPhotoDisabled,
+
+        pressed && !disabled && styles.compactPhotoPressed,
+      ]}
+    >
+      <View style={styles.compactPhotoPreview}>
+        {loading ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : photo?.uri ? (
+          <Image
+            source={{
+              uri: photo.uri,
+            }}
+            style={styles.compactPhotoImage}
+          />
+        ) : (
+          <Text style={styles.compactPhotoPlus}>+</Text>
+        )}
+      </View>
+
+      <View style={styles.compactPhotoText}>
+        <Text style={styles.compactPhotoTitle}>{title}</Text>
+
+        <Text style={styles.compactPhotoStatus}>
+          {loading
+            ? "Saving..."
+            : photo
+              ? "Saved"
+              : disabled
+                ? "Locked"
+                : "Take photo"}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function ShiftControl({
+  isWorking,
+  timer,
+  isStarting,
+  isEnding,
+  onStart,
+  onEnd,
+}: {
+  isWorking: boolean;
+
+  timer: string;
+
+  isStarting: boolean;
+
+  isEnding: boolean;
+
+  onStart: () => void;
+
+  onEnd: () => void;
+}) {
+  const { t } = useTranslation();
+
+  const loading = isWorking ? isEnding : isStarting;
+
+  return (
+    <Pressable
+      onPress={isWorking ? onEnd : onStart}
+      disabled={loading}
+      style={({ pressed }) => [
+        styles.shiftButton,
+
+        isWorking && styles.shiftButtonWorking,
+
+        pressed && styles.shiftButtonPressed,
+
+        loading && styles.disabledButton,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={COLORS.white} />
+      ) : (
+        <>
+          <View style={[styles.shiftDot, isWorking && styles.shiftDotActive]} />
+
+          <View style={styles.shiftButtonContent}>
+            <Text style={styles.shiftButtonTitle}>
+              {isWorking
+                ? t("driver.endShift", "End Shift")
+                : t("driver.startShift", "Start Shift")}
+            </Text>
+
+            {isWorking && <Text style={styles.shiftButtonTimer}>{timer}</Text>}
+          </View>
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+function RecentOrders({
+  orders,
+  activeOrder,
+  language,
+  expandedOrderId,
+  setExpandedOrderId,
+}: {
+  orders: Order[];
+
+  activeOrder: Order | null;
+
+  language: "ar" | "en";
+
+  expandedOrderId: string | null;
+
+  setExpandedOrderId: (value: string | null) => void;
+}) {
+  const { t } = useTranslation();
+
+  const completedOrders = orders
+    .filter(
+      (order) => order.status === "delivered" && order._id !== activeOrder?._id,
+    )
+    .slice(0, 5);
+
+  if (completedOrders.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.recentSection}>
+      <Text style={styles.sectionTitle}>
+        {t("driver.recentDeliveries", "Recent Deliveries")}
+      </Text>
+
+      {completedOrders.map((order) => (
+        <CompletedOrderRow
+          key={order._id}
+          order={order}
+          language={language}
+          expanded={expandedOrderId === order._id}
+          onToggle={() =>
+            setExpandedOrderId(expandedOrderId === order._id ? null : order._id)
+          }
+        />
+      ))}
+    </View>
+  );
+}
+
+function OrdersPanel({
+  orders,
+  activeOrder,
+  language,
+  expandedOrderId,
+  setExpandedOrderId,
+  isLoading,
+}: {
+  orders: Order[];
+
+  activeOrder: Order | null;
+
+  language: "ar" | "en";
+
+  expandedOrderId: string | null;
+
+  setExpandedOrderId: (value: string | null) => void;
+
+  isLoading: boolean;
+}) {
+  const { t } = useTranslation();
+
+  if (isLoading) {
+    return (
+      <View style={styles.panelLoader}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.panel}>
+      <Text style={styles.panelTitle}>{t("driver.orders", "Orders")}</Text>
+
+      {orders.length === 0 ? (
+        <Text style={styles.emptyText}>
+          {t("driver.noOrders", "No orders yet")}
+        </Text>
+      ) : (
+        orders.map((order) => {
+          const active = activeOrder?._id === order._id;
+
+          if (active) {
+            return (
+              <ActiveOrderHistoryRow
+                key={order._id}
+                order={order}
+                language={language}
+              />
+            );
+          }
+
+          return (
+            <CompletedOrderRow
+              key={order._id}
+              order={order}
+              language={language}
+              expanded={expandedOrderId === order._id}
+              onToggle={() =>
+                setExpandedOrderId(
+                  expandedOrderId === order._id ? null : order._id,
+                )
+              }
+            />
+          );
+        })
+      )}
+    </View>
+  );
+}
+
+function ActiveOrderHistoryRow({
+  order,
+  language,
+}: {
+  order: Order;
+
+  language: "ar" | "en";
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.historyOrderRow}>
+      <View style={styles.historyPhotos}>
+        <Image
+          source={{
+            uri: order.pickupPhoto.url,
+          }}
+          style={styles.historyPhoto}
+        />
+
+        <Text style={styles.historyArrow}>→</Text>
+
+        <View style={[styles.historyPhoto, styles.emptyHistoryPhoto]}>
+          <Text style={styles.emptyHistoryPhotoText}>D</Text>
+        </View>
+      </View>
+
+      <View style={styles.historyInfo}>
+        <Text style={styles.historyOrderTitle}>
+          {t("driver.activeDelivery", "Active Delivery")}
+        </Text>
+
+        <Text style={styles.historyOrderMeta}>
+          {formatDateTime(order.pickupTime, language)}
+        </Text>
+      </View>
+
+      <View style={styles.activeBadge}>
+        <Text style={styles.activeBadgeText}>
+          {t("driver.active", "Active")}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function CompletedOrderRow({
+  order,
+  language,
+  expanded,
+  onToggle,
+}: {
+  order: Order;
+
+  language: "ar" | "en";
+
+  expanded: boolean;
+
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.completedOrderCard}>
+      <Pressable
+        onPress={onToggle}
+        style={({ pressed }) => [
+          styles.historyOrderRow,
+
+          pressed && styles.rowPressed,
+        ]}
+      >
+        <View style={styles.historyPhotos}>
+          <Image
+            source={{
+              uri: order.pickupPhoto.url,
+            }}
+            style={styles.historyPhoto}
+          />
+
+          <Text style={styles.historyArrow}>→</Text>
+
+          {order.deliveryPhoto?.url ? (
+            <Image
+              source={{
+                uri: order.deliveryPhoto.url,
+              }}
+              style={styles.historyPhoto}
+            />
+          ) : (
+            <View style={[styles.historyPhoto, styles.emptyHistoryPhoto]}>
+              <Text style={styles.emptyHistoryPhotoText}>D</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.historyInfo}>
+          <Text style={styles.historyOrderTitle}>
+            {t("driver.delivery", "Delivery")}
+          </Text>
+
+          <Text style={styles.historyOrderMeta}>
+            {order.durationSeconds != null
+              ? formatDuration(order.durationSeconds)
+              : "--"}
+          </Text>
+        </View>
+
+        <View style={styles.doneBadge}>
+          <Text style={styles.doneBadgeText}>{t("driver.done", "Done")}</Text>
+        </View>
+      </Pressable>
+
+      {expanded && (
+        <View style={styles.completedExpanded}>
+          <View style={styles.expandedLine}>
+            <Text style={styles.expandedLabel}>
+              {t("orders.pickupTime", "Pickup")}
+            </Text>
+
+            <Text style={styles.expandedValue}>
+              {formatDateTime(order.pickupTime, language)}
+            </Text>
+          </View>
+
+          <View style={styles.expandedLine}>
+            <Text style={styles.expandedLabel}>
+              {t("orders.deliveryTime", "Delivery")}
+            </Text>
+
+            <Text style={styles.expandedValue}>
+              {order.deliveryTime
+                ? formatDateTime(order.deliveryTime, language)
+                : "--"}
+            </Text>
+          </View>
+
+          {!!order.notes && (
+            <Text style={styles.expandedNotes}>{order.notes}</Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function ShiftsPanel({
+  shifts,
+  language,
+}: {
+  shifts: DriverShift[];
+
+  language: "ar" | "en";
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.panel}>
+      <Text style={styles.panelTitle}>
+        {t("shifts.history", "Shift History")}
+      </Text>
+
+      {shifts.length === 0 ? (
+        <Text style={styles.emptyText}>
+          {t("shifts.empty", "No shifts found")}
+        </Text>
+      ) : (
+        shifts.map((shift) => (
+          <View key={shift._id ?? shift.id} style={styles.shiftHistoryRow}>
+            <Text style={styles.shiftHistoryTitle}>
+              {shift.status === "active"
+                ? t("shifts.active", "Active")
+                : t("shifts.completed", "Completed")}
+            </Text>
+
+            <Text style={styles.shiftHistoryText}>
+              {formatDateTime(shift.startedAt, language)}
+            </Text>
+
+            <Text style={styles.shiftHistoryText}>
+              {formatDuration(shift.durationSeconds ?? 0)}
+            </Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+function StatsPanel({ stats }: { stats: MyDashboardStatsResponse | null }) {
+  const { t } = useTranslation();
+
+  if (!stats) {
+    return (
+      <View style={styles.panelLoader}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.panel}>
+      <Text style={styles.panelTitle}>{t("stats.title", "Statistics")}</Text>
+
+      {(["today", "week", "month"] as const).map((period) => {
+        const values = stats.stats[period];
+
+        return (
+          <View key={period} style={styles.statRow}>
+            <Text style={styles.statTitle}>{t(`stats.${period}`, period)}</Text>
+
+            <View style={styles.statValues}>
+              <StatValue
+                value={values.orders.total}
+                label={t("stats.orders", "Orders")}
+              />
+
+              <StatValue
+                value={values.orders.delivered}
+                label={t("stats.delivered", "Delivered")}
+              />
+
+              <StatValue
+                value={formatDuration(values.work.totalSeconds)}
+                label={t("stats.workTime", "Work")}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function StatValue({
+  value,
+  label,
+}: {
+  value: string | number;
+
+  label: string;
+}) {
+  return (
+    <View style={styles.statValueBox}>
+      <Text style={styles.statValue}>{value}</Text>
+
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function DriverTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: DriverTabName;
+
+  onChange: (tab: DriverTabName) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.tabs}>
+      <DriverTab
+        title={t("driver.home", "Home")}
+        active={activeTab === "home"}
+        onPress={() => onChange("home")}
+      />
+
+      <DriverTab
+        title={t("driver.orders", "Orders")}
+        active={activeTab === "orders"}
+        onPress={() => onChange("orders")}
+      />
+
+      <DriverTab
+        title={t("driver.shifts", "Shifts")}
+        active={activeTab === "shifts"}
+        onPress={() => onChange("shifts")}
+      />
+
+      <DriverTab
+        title={t("driver.stats", "Stats")}
+        active={activeTab === "stats"}
+        onPress={() => onChange("stats")}
+      />
+    </View>
+  );
+}
+
+function DriverTab({
+  title,
+  active,
+  onPress,
+}: {
+  title: string;
+
+  active: boolean;
+
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.tab,
+
+        active && styles.tabActive,
+
+        pressed && styles.tabPressed,
+      ]}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
+function safeDate(value?: string | null) {
+  if (!value) {
+    return new Date();
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function formatDuration(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+
+  const hours = Math.floor(seconds / 3600);
+
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  const remaining = seconds % 60;
+
+  return [hours, minutes, remaining]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: COLORS.light,
+  },
+
+  screen: {
+    flex: 1,
+    backgroundColor: COLORS.light,
+  },
+
+  fixedHeader: {
+    width: "100%",
+    maxWidth: 720,
+
+    alignSelf: "center",
+
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+
+    backgroundColor: COLORS.light,
+
+    zIndex: 10,
+  },
+
+  content: {
+    width: "100%",
+    maxWidth: 720,
+
+    alignSelf: "center",
+
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 40,
+  },
+  greeting: {
+    fontSize: 10,
+    fontWeight: "600",
+
+    color: COLORS.primary,
+  },
+
+  tabs: {
+    flexDirection: "row",
+
+    padding: 4,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 12,
+
+    backgroundColor: COLORS.white,
+  },
+
+  tab: {
+    flex: 1,
+
+    height: 36,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 8,
+  },
+
+  tabActive: {
+    backgroundColor: COLORS.primary,
+  },
+
+  tabPressed: {
+    opacity: 0.7,
+  },
+
+  tabText: {
+    fontSize: 10,
+    fontWeight: "800",
+
+    color: COLORS.muted,
+  },
+
+  tabTextActive: {
+    color: COLORS.white,
+  },
+
+  homeContent: {
+    marginTop: 12,
+  },
+
+  inlineOrderCard: {
+    padding: 11,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 14,
+
+    backgroundColor: COLORS.white,
+  },
+
+  inlineOrderHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+
+    marginBottom: 9,
+  },
+
+  inlineOrderTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  inlineOrderTimer: {
+    marginTop: 2,
+
+    fontSize: 12,
+    fontWeight: "900",
+
+    color: COLORS.secondary,
+  },
+
+  noteButton: {
+    width: 32,
+    height: 32,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
+  },
+
+  inlinePhotoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  compactPhotoButton: {
+    flex: 1,
+
+    minHeight: 50,
+
+    flexDirection: "row",
+    alignItems: "center",
+
+    padding: 6,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.light,
+  },
+
+  compactPhotoDisabled: {
+    opacity: 0.5,
+  },
+
+  compactPhotoPressed: {
+    opacity: 0.75,
+  },
+
+  compactPhotoPreview: {
+    width: 38,
+    height: 38,
+
+    overflow: "hidden",
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 8,
+
+    backgroundColor: COLORS.white,
+  },
+
+  compactPhotoImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  compactPhotoPlus: {
+    fontSize: 21,
+    fontWeight: "500",
+
+    color: COLORS.primary,
+  },
+
+  compactPhotoText: {
+    flex: 1,
+
+    marginLeft: 7,
+  },
+
+  compactPhotoTitle: {
+    fontSize: 10,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  compactPhotoStatus: {
+    marginTop: 2,
+
+    fontSize: 8,
+
+    color: COLORS.muted,
+  },
+
+  photoConnector: {
+    width: 27,
+
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  photoConnectorLine: {
+    position: "absolute",
+
+    left: 0,
+    right: 0,
+
+    height: 1,
+
+    backgroundColor: COLORS.border,
+  },
+
+  photoConnectorText: {
+    paddingHorizontal: 4,
+
+    fontSize: 12,
+
+    color: COLORS.secondary,
+
+    backgroundColor: COLORS.white,
+  },
+
+  notesEditor: {
+    marginTop: 10,
+  },
+
+  notesInput: {
+    minHeight: 68,
+
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.light,
+
+    color: COLORS.black,
+
+    fontSize: 12,
+
+    textAlignVertical: "top",
+  },
+
+  notesInputLocked: {
+    opacity: 0.75,
+  },
+
+  notesFooter: {
+    marginTop: 4,
+
+    flexDirection: "row",
+    justifyContent: "space-between",
+
+    gap: 10,
+  },
+
+  notesHint: {
+    flex: 1,
+
+    fontSize: 8,
+
+    color: COLORS.muted,
+  },
+
+  notesLockedText: {
+    flex: 1,
+
+    fontSize: 8,
+
+    color: COLORS.success,
+  },
+
+  characterCount: {
+    fontSize: 8,
+
+    color: COLORS.muted,
+  },
+
+  startShiftHint: {
+    marginTop: 8,
+
+    fontSize: 9,
+
+    color: COLORS.muted,
+
+    textAlign: "center",
+  },
+
+  errorBox: {
+    marginTop: 8,
+
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+
+    borderRadius: 8,
+
+    backgroundColor: COLORS.errorBackground,
+  },
+
+  errorText: {
+    fontSize: 10,
+
+    color: COLORS.error,
+  },
+
+  shiftButton: {
+    width: "100%",
+    height: 48,
+
+    marginTop: 10,
+
+    paddingHorizontal: 14,
+
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 12,
+
+    backgroundColor: COLORS.primary,
+  },
+
+  shiftButtonWorking: {
+    backgroundColor: COLORS.secondary,
+  },
+
+  shiftButtonPressed: {
+    opacity: 0.82,
+  },
+
+  shiftDot: {
+    width: 8,
+    height: 8,
+
+    borderRadius: 4,
+
+    marginRight: 8,
+
+    backgroundColor: "#A0A8A8",
+  },
+
+  shiftDotActive: {
+    backgroundColor: "#A7F3D0",
+  },
+
+  shiftButtonContent: {
+    alignItems: "center",
+  },
+
+  shiftButtonTitle: {
+    fontSize: 11,
+    fontWeight: "900",
+
+    color: COLORS.white,
+  },
+
+  shiftButtonTimer: {
+    marginTop: 1,
+
+    fontSize: 11,
+    fontWeight: "900",
+
+    color: COLORS.white,
+  },
+
+  disabledButton: {
+    opacity: 0.45,
+  },
+
+  recentSection: {
+    marginTop: 5,
+  },
+
+  sectionTitle: {
+    marginBottom: 4,
+
+    fontSize: 13,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  completedOrderCard: {
+    overflow: "hidden",
+
+    marginBottom: 5,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 12,
+
+    backgroundColor: COLORS.white,
+  },
+
+  historyOrderRow: {
+    minHeight: 60,
+
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  rowPressed: {
+    backgroundColor: COLORS.light,
+  },
+
+  historyPhotos: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  historyPhoto: {
+    width: 34,
+    height: 34,
+
+    borderRadius: 8,
+
+    backgroundColor: COLORS.light,
+  },
+
+  historyArrow: {
+    marginHorizontal: 4,
+
+    fontSize: 10,
+
+    color: COLORS.muted,
+  },
+
+  emptyHistoryPhoto: {
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.border,
+  },
+
+  emptyHistoryPhotoText: {
+    fontSize: 9,
+    fontWeight: "900",
+
+    color: COLORS.muted,
+  },
+
+  historyInfo: {
+    flex: 1,
+
+    marginLeft: 9,
+  },
+
+  historyOrderTitle: {
+    fontSize: 11,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  historyOrderMeta: {
+    marginTop: 3,
+
+    fontSize: 9,
+
+    color: COLORS.muted,
+  },
+
+  activeBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+
+    borderRadius: 999,
+
+    backgroundColor: "#E5F1F2",
+  },
+
+  activeBadgeText: {
+    fontSize: 8,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  doneBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+
+    borderRadius: 999,
+
+    backgroundColor: COLORS.successLight,
+  },
+
+  doneBadgeText: {
+    fontSize: 8,
+    fontWeight: "900",
+
+    color: COLORS.success,
+  },
+
+  completedExpanded: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+
+    borderTopWidth: StyleSheet.hairlineWidth,
+
+    borderTopColor: COLORS.border,
+
+    backgroundColor: COLORS.light,
+  },
+
+  expandedLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+
+    marginTop: 8,
+
+    gap: 10,
+  },
+
+  expandedLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+
+    color: COLORS.muted,
+  },
+
+  expandedValue: {
+    flex: 1,
+
+    fontSize: 9,
+    fontWeight: "700",
+
+    color: COLORS.black,
+
+    textAlign: "right",
+  },
+
+  expandedNotes: {
+    marginTop: 8,
+
+    fontSize: 10,
+    lineHeight: 15,
+
+    color: COLORS.black,
+  },
+
+  panel: {
+    marginTop: 12,
+
+    padding: 12,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 14,
+
+    backgroundColor: COLORS.white,
+  },
+
+  panelTitle: {
+    marginBottom: 9,
+
+    fontSize: 14,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  panelLoader: {
+    minHeight: 120,
+
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  emptyText: {
+    fontSize: 11,
+
+    color: COLORS.muted,
+  },
+
+  shiftHistoryRow: {
+    marginBottom: 8,
+
+    padding: 10,
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.light,
+  },
+
+  shiftHistoryTitle: {
+    fontSize: 11,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  shiftHistoryText: {
+    marginTop: 3,
+
+    fontSize: 10,
+
+    color: COLORS.muted,
+  },
+
+  statRow: {
+    marginBottom: 9,
+
+    padding: 10,
+
+    borderRadius: 11,
+
+    backgroundColor: COLORS.light,
+  },
+
+  statTitle: {
+    marginBottom: 8,
+
+    fontSize: 11,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+
+    textTransform: "capitalize",
+  },
+
+  statValues: {
+    flexDirection: "row",
+
+    gap: 7,
+  },
+
+  statValueBox: {
+    flex: 1,
+
+    paddingVertical: 8,
+
+    alignItems: "center",
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.white,
+  },
+
+  statValue: {
+    fontSize: 12,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  statLabel: {
+    marginTop: 2,
+
+    fontSize: 8,
+
+    color: COLORS.muted,
+  },
+
+  buttonPressed: {
+    opacity: 0.75,
+  },
+});
