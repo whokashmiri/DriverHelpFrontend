@@ -39,9 +39,7 @@ import { useShift } from "../../hooks/useShift";
 import { useLanguage } from "../../context/LanguageContext";
 
 import type { Order, OrderPhotoInput } from "../../types/order";
-
 import type { DriverShift } from "../../types/shift";
-
 import type { MyDashboardStatsResponse } from "../../types/stats";
 
 import { formatDateTime, getErrorMessage } from "../../utils";
@@ -65,6 +63,8 @@ const COLORS = {
 
 type DriverTabName = "home" | "orders" | "shifts" | "stats";
 
+type DateFilter = "today" | "7days" | "30days" | "all";
+
 export default function DriverHomeScreen() {
   const { t } = useTranslation();
 
@@ -72,16 +72,8 @@ export default function DriverHomeScreen() {
 
   const { language } = useLanguage();
 
-  const {
-    isWorking,
-    timer,
-
-    startShift,
-    endShift,
-
-    isStarting,
-    isEnding,
-  } = useShift(language);
+  const { isWorking, timer, startShift, endShift, isStarting, isEnding } =
+    useShift(language);
 
   useLocationTracking({
     enabled: isWorking,
@@ -96,6 +88,10 @@ export default function DriverHomeScreen() {
   const [stats, setStats] = useState<MyDashboardStatsResponse | null>(null);
 
   const [tab, setTab] = useState<DriverTabName>("home");
+
+  const [orderFilter, setOrderFilter] = useState<DateFilter>("today");
+
+  const [shiftFilter, setShiftFilter] = useState<DateFilter>("today");
 
   const [pickupPhoto, setPickupPhoto] = useState<OrderPhotoInput | null>(null);
 
@@ -159,9 +155,13 @@ export default function DriverHomeScreen() {
         }
       } else {
         setPickupPhoto(null);
+
         setDeliveryPhoto(null);
+
         setOrderNotes("");
+
         setOrderElapsedSeconds(0);
+
         setNotesExpanded(false);
       }
     } catch (error) {
@@ -431,9 +431,11 @@ export default function DriverHomeScreen() {
       setActiveOrder(null);
 
       setPickupPhoto(null);
+
       setDeliveryPhoto(null);
 
       setOrderNotes("");
+
       setNotesExpanded(false);
     } catch (error) {
       setDeliveryPhoto(null);
@@ -454,24 +456,24 @@ export default function DriverHomeScreen() {
   return (
     <AppScreen>
       <View style={styles.root}>
-        {/* FIXED HEADER */}
         <View style={styles.fixedHeader}>
           <Text
             style={[
               styles.greeting,
+
               {
                 textAlign: isArabic ? "right" : "left",
               },
             ]}
           >
             {t("driver.welcome", "Welcome")}
+
             {user?.name ? `, ${user.name}` : ""}
           </Text>
 
           <DriverTabs activeTab={tab} onChange={setTab} />
         </View>
 
-        {/* ONLY CONTENT SCROLLS */}
         <ScrollView
           style={styles.screen}
           contentContainerStyle={styles.content}
@@ -524,17 +526,144 @@ export default function DriverHomeScreen() {
               expandedOrderId={expandedOrderId}
               setExpandedOrderId={setExpandedOrderId}
               isLoading={isLoadingOrder}
+              filter={orderFilter}
+              setFilter={setOrderFilter}
             />
           )}
 
           {tab === "shifts" && (
-            <ShiftsPanel shifts={shifts} language={language} />
+            <ShiftsPanel
+              shifts={shifts}
+              language={language}
+              filter={shiftFilter}
+              setFilter={setShiftFilter}
+            />
           )}
 
           {tab === "stats" && <StatsPanel stats={stats} />}
         </ScrollView>
       </View>
     </AppScreen>
+  );
+}
+
+/*
+ * FILTER HELPERS
+ */
+
+function filterByDate<T>(
+  items: T[],
+
+  getDate: (item: T) => string | Date | null | undefined,
+
+  filter: DateFilter,
+) {
+  if (filter === "all") {
+    return items;
+  }
+
+  const now = new Date();
+
+  const start = new Date(now);
+
+  if (filter === "today") {
+    start.setHours(0, 0, 0, 0);
+  }
+
+  if (filter === "7days") {
+    start.setDate(now.getDate() - 6);
+
+    start.setHours(0, 0, 0, 0);
+  }
+
+  if (filter === "30days") {
+    start.setDate(now.getDate() - 29);
+
+    start.setHours(0, 0, 0, 0);
+  }
+
+  return items.filter((item) => {
+    const rawDate = getDate(item);
+
+    if (!rawDate) {
+      return false;
+    }
+
+    const date = new Date(rawDate);
+
+    if (Number.isNaN(date.getTime())) {
+      return false;
+    }
+
+    return date >= start && date <= now;
+  });
+}
+
+function DateFilterBar({
+  value,
+  onChange,
+}: {
+  value: DateFilter;
+
+  onChange: (value: DateFilter) => void;
+}) {
+  const { t } = useTranslation();
+
+  const options: {
+    key: DateFilter;
+    label: string;
+  }[] = [
+    {
+      key: "today",
+      label: t("filters.today", "Today"),
+    },
+
+    {
+      key: "7days",
+      label: t("filters.sevenDays", "7 Days"),
+    },
+
+    {
+      key: "30days",
+      label: t("filters.thirtyDays", "30 Days"),
+    },
+
+    {
+      key: "all",
+      label: t("filters.all", "All"),
+    },
+  ];
+
+  return (
+    <View style={styles.dateFilters}>
+      {options.map((option) => {
+        const active = value === option.key;
+
+        return (
+          <Pressable
+            key={option.key}
+            onPress={() => onChange(option.key)}
+            style={({ pressed }) => [
+              styles.dateFilterButton,
+
+              active && styles.dateFilterButtonActive,
+
+              pressed && styles.dateFilterButtonPressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.dateFilterText,
+
+                active && styles.dateFilterTextActive,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -589,7 +718,11 @@ function InlineOrderCreator({
   return (
     <View style={styles.inlineOrderCard}>
       <View style={styles.inlineOrderHeader}>
-        <View style={{ flex: 1 }}>
+        <View
+          style={{
+            flex: 1,
+          }}
+        >
           <Text style={styles.inlineOrderTitle}>
             {activeOrder
               ? t("driver.activeDelivery", "Active Delivery")
@@ -605,6 +738,7 @@ function InlineOrderCreator({
           onPress={() => setNotesExpanded(!notesExpanded)}
           style={({ pressed }) => [
             styles.noteButton,
+
             pressed && styles.buttonPressed,
           ]}
         >
@@ -663,7 +797,10 @@ function InlineOrderCreator({
               </Text>
             )}
 
-            <Text style={styles.characterCount}>{notes.length}/500</Text>
+            <Text style={styles.characterCount}>
+              {notes.length}
+              /500
+            </Text>
           </View>
         </View>
       )}
@@ -860,6 +997,8 @@ function OrdersPanel({
   expandedOrderId,
   setExpandedOrderId,
   isLoading,
+  filter,
+  setFilter,
 }: {
   orders: Order[];
 
@@ -872,8 +1011,20 @@ function OrdersPanel({
   setExpandedOrderId: (value: string | null) => void;
 
   isLoading: boolean;
+
+  filter: DateFilter;
+
+  setFilter: (value: DateFilter) => void;
 }) {
   const { t } = useTranslation();
+
+  const filteredOrders = filterByDate(
+    orders,
+
+    (order) => order.pickupTime || order.createdAt,
+
+    filter,
+  );
 
   if (isLoading) {
     return (
@@ -885,14 +1036,20 @@ function OrdersPanel({
 
   return (
     <View style={styles.panel}>
-      <Text style={styles.panelTitle}>{t("driver.orders", "Orders")}</Text>
+      <View style={styles.panelHeader}>
+        <Text style={styles.panelTitle}>{t("driver.orders", "Orders")}</Text>
 
-      {orders.length === 0 ? (
+        <Text style={styles.resultCount}>{filteredOrders.length}</Text>
+      </View>
+
+      <DateFilterBar value={filter} onChange={setFilter} />
+
+      {filteredOrders.length === 0 ? (
         <Text style={styles.emptyText}>
-          {t("driver.noOrders", "No orders yet")}
+          {t("driver.noOrdersForPeriod", "No orders found for this period")}
         </Text>
       ) : (
-        orders.map((order) => {
+        filteredOrders.map((order) => {
           const active = activeOrder?._id === order._id;
 
           if (active) {
@@ -1073,25 +1230,45 @@ function CompletedOrderRow({
 function ShiftsPanel({
   shifts,
   language,
+  filter,
+  setFilter,
 }: {
   shifts: DriverShift[];
 
   language: "ar" | "en";
+
+  filter: DateFilter;
+
+  setFilter: (value: DateFilter) => void;
 }) {
   const { t } = useTranslation();
 
+  const filteredShifts = filterByDate(
+    shifts,
+
+    (shift) => shift.startedAt,
+
+    filter,
+  );
+
   return (
     <View style={styles.panel}>
-      <Text style={styles.panelTitle}>
-        {t("shifts.history", "Shift History")}
-      </Text>
+      <View style={styles.panelHeader}>
+        <Text style={styles.panelTitle}>
+          {t("shifts.history", "Shift History")}
+        </Text>
 
-      {shifts.length === 0 ? (
+        <Text style={styles.resultCount}>{filteredShifts.length}</Text>
+      </View>
+
+      <DateFilterBar value={filter} onChange={setFilter} />
+
+      {filteredShifts.length === 0 ? (
         <Text style={styles.emptyText}>
-          {t("shifts.empty", "No shifts found")}
+          {t("shifts.emptyForPeriod", "No shifts found for this period")}
         </Text>
       ) : (
-        shifts.map((shift) => (
+        filteredShifts.map((shift) => (
           <View key={shift._id ?? shift.id} style={styles.shiftHistoryRow}>
             <Text style={styles.shiftHistoryTitle}>
               {shift.status === "active"
@@ -1126,7 +1303,9 @@ function StatsPanel({ stats }: { stats: MyDashboardStatsResponse | null }) {
 
   return (
     <View style={styles.panel}>
-      <Text style={styles.panelTitle}>{t("stats.title", "Statistics")}</Text>
+      <Text style={styles.panelTitleStandalone}>
+        {t("stats.title", "Statistics")}
+      </Text>
 
       {(["today", "week", "month"] as const).map((period) => {
         const values = stats.stats[period];
@@ -1270,11 +1449,13 @@ function formatDuration(totalSeconds: number) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+
     backgroundColor: COLORS.light,
   },
 
   screen: {
     flex: 1,
+
     backgroundColor: COLORS.light,
   },
 
@@ -1303,6 +1484,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 40,
   },
+
   greeting: {
     fontSize: 10,
     fontWeight: "600",
@@ -1329,6 +1511,7 @@ const styles = StyleSheet.create({
     height: 36,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -1370,6 +1553,7 @@ const styles = StyleSheet.create({
 
   inlineOrderHeader: {
     flexDirection: "row",
+
     alignItems: "center",
 
     marginBottom: 9,
@@ -1377,6 +1561,7 @@ const styles = StyleSheet.create({
 
   inlineOrderTitle: {
     fontSize: 13,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -1386,6 +1571,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
 
     fontSize: 12,
+
     fontWeight: "900",
 
     color: COLORS.secondary,
@@ -1396,6 +1582,7 @@ const styles = StyleSheet.create({
     height: 32,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 9,
@@ -1405,6 +1592,7 @@ const styles = StyleSheet.create({
 
   inlinePhotoRow: {
     flexDirection: "row",
+
     alignItems: "center",
   },
 
@@ -1414,11 +1602,13 @@ const styles = StyleSheet.create({
     minHeight: 50,
 
     flexDirection: "row",
+
     alignItems: "center",
 
     padding: 6,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     borderRadius: 10,
@@ -1441,6 +1631,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -1455,6 +1646,7 @@ const styles = StyleSheet.create({
 
   compactPhotoPlus: {
     fontSize: 21,
+
     fontWeight: "500",
 
     color: COLORS.primary,
@@ -1468,6 +1660,7 @@ const styles = StyleSheet.create({
 
   compactPhotoTitle: {
     fontSize: 10,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -1485,6 +1678,7 @@ const styles = StyleSheet.create({
     width: 27,
 
     alignItems: "center",
+
     justifyContent: "center",
   },
 
@@ -1517,9 +1711,11 @@ const styles = StyleSheet.create({
     minHeight: 68,
 
     paddingHorizontal: 10,
+
     paddingVertical: 8,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     borderRadius: 10,
@@ -1541,6 +1737,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
 
     flexDirection: "row",
+
     justifyContent: "space-between",
 
     gap: 10,
@@ -1582,6 +1779,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
 
     paddingHorizontal: 9,
+
     paddingVertical: 7,
 
     borderRadius: 8,
@@ -1597,6 +1795,7 @@ const styles = StyleSheet.create({
 
   shiftButton: {
     width: "100%",
+
     height: 48,
 
     marginTop: 10,
@@ -1604,7 +1803,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
 
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 12,
@@ -1641,6 +1842,7 @@ const styles = StyleSheet.create({
 
   shiftButtonTitle: {
     fontSize: 11,
+
     fontWeight: "900",
 
     color: COLORS.white,
@@ -1650,6 +1852,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
 
     fontSize: 11,
+
     fontWeight: "900",
 
     color: COLORS.white,
@@ -1667,6 +1870,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
 
     fontSize: 13,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -1678,6 +1882,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     borderRadius: 12,
@@ -1689,9 +1894,11 @@ const styles = StyleSheet.create({
     minHeight: 60,
 
     paddingHorizontal: 9,
+
     paddingVertical: 8,
 
     flexDirection: "row",
+
     alignItems: "center",
   },
 
@@ -1701,6 +1908,7 @@ const styles = StyleSheet.create({
 
   historyPhotos: {
     flexDirection: "row",
+
     alignItems: "center",
   },
 
@@ -1723,15 +1931,19 @@ const styles = StyleSheet.create({
 
   emptyHistoryPhoto: {
     alignItems: "center",
+
     justifyContent: "center",
 
     borderWidth: 1,
+
     borderStyle: "dashed",
+
     borderColor: COLORS.border,
   },
 
   emptyHistoryPhotoText: {
     fontSize: 9,
+
     fontWeight: "900",
 
     color: COLORS.muted,
@@ -1745,6 +1957,7 @@ const styles = StyleSheet.create({
 
   historyOrderTitle: {
     fontSize: 11,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -1760,6 +1973,7 @@ const styles = StyleSheet.create({
 
   activeBadge: {
     paddingHorizontal: 7,
+
     paddingVertical: 4,
 
     borderRadius: 999,
@@ -1769,6 +1983,7 @@ const styles = StyleSheet.create({
 
   activeBadgeText: {
     fontSize: 8,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -1776,6 +1991,7 @@ const styles = StyleSheet.create({
 
   doneBadge: {
     paddingHorizontal: 7,
+
     paddingVertical: 4,
 
     borderRadius: 999,
@@ -1785,6 +2001,7 @@ const styles = StyleSheet.create({
 
   doneBadgeText: {
     fontSize: 8,
+
     fontWeight: "900",
 
     color: COLORS.success,
@@ -1792,6 +2009,7 @@ const styles = StyleSheet.create({
 
   completedExpanded: {
     paddingHorizontal: 10,
+
     paddingBottom: 10,
 
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1803,6 +2021,7 @@ const styles = StyleSheet.create({
 
   expandedLine: {
     flexDirection: "row",
+
     justifyContent: "space-between",
 
     marginTop: 8,
@@ -1812,6 +2031,7 @@ const styles = StyleSheet.create({
 
   expandedLabel: {
     fontSize: 9,
+
     fontWeight: "700",
 
     color: COLORS.muted,
@@ -1821,6 +2041,7 @@ const styles = StyleSheet.create({
     flex: 1,
 
     fontSize: 9,
+
     fontWeight: "700",
 
     color: COLORS.black,
@@ -1832,6 +2053,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
 
     fontSize: 10,
+
     lineHeight: 15,
 
     color: COLORS.black,
@@ -1843,6 +2065,7 @@ const styles = StyleSheet.create({
     padding: 12,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     borderRadius: 14,
@@ -1850,19 +2073,107 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
 
-  panelTitle: {
-    marginBottom: 9,
+  panelHeader: {
+    flexDirection: "row",
 
+    alignItems: "center",
+
+    justifyContent: "space-between",
+
+    marginBottom: 7,
+  },
+
+  panelTitle: {
     fontSize: 14,
+
     fontWeight: "900",
 
     color: COLORS.primary,
+  },
+
+  panelTitleStandalone: {
+    marginBottom: 9,
+
+    fontSize: 14,
+
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  resultCount: {
+    minWidth: 22,
+
+    height: 22,
+
+    paddingHorizontal: 6,
+
+    borderRadius: 11,
+
+    textAlign: "center",
+
+    textAlignVertical: "center",
+
+    backgroundColor: COLORS.secondary,
+
+    color: COLORS.white,
+
+    fontSize: 9,
+
+    fontWeight: "900",
+  },
+
+  dateFilters: {
+    flexDirection: "row",
+
+    gap: 5,
+
+    marginBottom: 10,
+
+    padding: 3,
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
+  },
+
+  dateFilterButton: {
+    flex: 1,
+
+    height: 28,
+
+    alignItems: "center",
+
+    justifyContent: "center",
+
+    borderRadius: 7,
+  },
+
+  dateFilterButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+
+  dateFilterButtonPressed: {
+    opacity: 0.7,
+  },
+
+  dateFilterText: {
+    fontSize: 8,
+
+    fontWeight: "800",
+
+    color: COLORS.muted,
+  },
+
+  dateFilterTextActive: {
+    color: COLORS.white,
   },
 
   panelLoader: {
     minHeight: 120,
 
     alignItems: "center",
+
     justifyContent: "center",
   },
 
@@ -1884,6 +2195,7 @@ const styles = StyleSheet.create({
 
   shiftHistoryTitle: {
     fontSize: 11,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -1911,6 +2223,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
 
     fontSize: 11,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -1938,6 +2251,7 @@ const styles = StyleSheet.create({
 
   statValue: {
     fontSize: 12,
+
     fontWeight: "900",
 
     color: COLORS.primary,

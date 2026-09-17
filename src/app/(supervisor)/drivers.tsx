@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 import { router } from "expo-router";
@@ -391,73 +391,73 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 40,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
 
   backButton: {
     alignSelf: "flex-start",
-    paddingVertical: 5,
-    marginBottom: 10,
+    paddingVertical: 3,
+    marginBottom: 5,
   },
 
   backText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: COLORS.secondary,
   },
 
   heading: {
-    marginBottom: 18,
+    marginBottom: 10,
   },
 
   title: {
-    fontSize: 25,
+    fontSize: 21,
     fontWeight: "900",
     color: COLORS.primary,
   },
 
   subtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 19,
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
     color: COLORS.muted,
   },
 
   createCard: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 18,
+    paddingHorizontal: 12,
+    paddingTop: 11,
+    paddingBottom: 12,
 
-    borderRadius: 16,
+    borderRadius: 12,
 
     backgroundColor: COLORS.white,
 
     borderWidth: 1,
     borderColor: COLORS.border,
 
-    marginBottom: 18,
+    marginBottom: 12,
   },
 
   cardTitle: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "900",
     color: COLORS.primary,
   },
 
   cardSubtitle: {
-    marginTop: 3,
-    marginBottom: 16,
+    marginTop: 2,
+    marginBottom: 10,
 
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 10,
+    lineHeight: 14,
 
     color: COLORS.muted,
   },
 
   field: {
-    marginBottom: 13,
+    marginBottom: 8,
   },
 
   labelRow: {
@@ -465,51 +465,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
 
-    marginBottom: 6,
+    marginBottom: 4,
   },
 
   label: {
     flex: 1,
 
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "700",
 
     color: COLORS.primary,
   },
 
   optional: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: "600",
 
     color: COLORS.muted,
   },
 
   input: {
-    height: 43,
+    height: 36,
 
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 0,
 
     borderWidth: 1,
     borderColor: COLORS.border,
 
-    borderRadius: 10,
+    borderRadius: 8,
 
     backgroundColor: COLORS.light,
 
-    fontSize: 14,
+    fontSize: 12,
     color: COLORS.black,
   },
 
   primaryButton: {
-    height: 46,
+    height: 38,
 
-    marginTop: 3,
+    marginTop: 2,
 
     alignItems: "center",
     justifyContent: "center",
 
-    borderRadius: 10,
+    borderRadius: 8,
 
     backgroundColor: COLORS.primary,
   },
@@ -525,17 +525,17 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: COLORS.white,
 
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
   },
 
   errorBox: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
 
-    marginBottom: 16,
+    marginBottom: 10,
 
-    borderRadius: 10,
+    borderRadius: 8,
 
     backgroundColor: COLORS.errorBackground,
   },
@@ -543,33 +543,33 @@ const styles = StyleSheet.create({
   errorText: {
     color: COLORS.error,
 
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 10,
+    lineHeight: 14,
   },
 
   listHeader: {
     flexDirection: "row",
     alignItems: "center",
 
-    marginBottom: 10,
+    marginBottom: 6,
   },
 
   listTitle: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "900",
 
     color: COLORS.primary,
   },
 
   driverCount: {
-    minWidth: 25,
-    height: 25,
+    minWidth: 21,
+    height: 21,
 
-    marginLeft: 8,
+    marginLeft: 6,
 
-    paddingHorizontal: 7,
+    paddingHorizontal: 5,
 
-    borderRadius: 13,
+    borderRadius: 11,
 
     textAlign: "center",
     textAlignVertical: "center",
@@ -578,20 +578,20 @@ const styles = StyleSheet.create({
 
     color: COLORS.white,
 
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "800",
   },
 
   loading: {
-    paddingVertical: 30,
+    paddingVertical: 20,
 
     alignItems: "center",
   },
 
   emptyCard: {
-    padding: 20,
+    padding: 14,
 
-    borderRadius: 14,
+    borderRadius: 10,
 
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -602,17 +602,17 @@ const styles = StyleSheet.create({
   },
 
   emptyTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
 
     color: COLORS.primary,
   },
 
   emptyText: {
-    marginTop: 5,
+    marginTop: 3,
 
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 10,
+    lineHeight: 15,
 
     color: COLORS.muted,
 
@@ -620,22 +620,22 @@ const styles = StyleSheet.create({
   },
 
   driverCard: {
-    minHeight: 74,
+    minHeight: 56,
 
     flexDirection: "row",
     alignItems: "center",
 
-    paddingHorizontal: 13,
-    paddingVertical: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
 
-    borderRadius: 14,
+    borderRadius: 10,
 
     borderWidth: 1,
     borderColor: COLORS.border,
 
     backgroundColor: COLORS.white,
 
-    marginBottom: 9,
+    marginBottom: 6,
   },
 
   driverCardPressed: {
@@ -643,10 +643,10 @@ const styles = StyleSheet.create({
   },
 
   driverAvatar: {
-    width: 42,
-    height: 42,
+    width: 34,
+    height: 34,
 
-    borderRadius: 21,
+    borderRadius: 17,
 
     alignItems: "center",
     justifyContent: "center",
@@ -656,11 +656,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
 
-    marginRight: 11,
+    marginRight: 8,
   },
 
   avatarText: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -669,35 +669,35 @@ const styles = StyleSheet.create({
   driverInfo: {
     flex: 1,
 
-    paddingRight: 10,
+    paddingRight: 6,
   },
 
   driverName: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
 
     color: COLORS.black,
   },
 
   driverSub: {
-    marginTop: 3,
+    marginTop: 1,
 
-    fontSize: 11,
+    fontSize: 9,
 
     color: COLORS.secondary,
   },
 
   driverPhone: {
-    marginTop: 2,
+    marginTop: 1,
 
-    fontSize: 10,
+    fontSize: 8,
 
     color: COLORS.muted,
   },
 
   statusBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
 
     borderRadius: 999,
   },
@@ -711,7 +711,7 @@ const styles = StyleSheet.create({
   },
 
   statusText: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: "800",
   },
 

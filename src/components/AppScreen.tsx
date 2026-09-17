@@ -1,46 +1,34 @@
-import { SafeAreaView, StyleSheet, View, ViewStyle } from "react-native";
-
 import type { ReactNode } from "react";
+
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
+
 import { AppHeader } from "./AppHeader";
 
 type AppScreenProps = {
   children: ReactNode;
 
-  language: "en" | "ar";
+  contentStyle?: StyleProp<ViewStyle>;
 
-  onLanguageChange: (language: "en" | "ar") => void;
+  showHeader?: boolean;
+};
 
-  user?: {
-    id: string;
-    name?: string;
-    iqamaId?: string;
-    role?: "driver" | "supervisor" | "admin";
-  } | null;
-
-  onProfilePress?: () => void;
-  onTermsPress?: () => void;
-
-  contentStyle?: ViewStyle;
+const COLORS = {
+  black: "#0A090C",
+  light: "#F0EDEE",
+  primary: "#07393C",
+  secondary: "#2C666E",
 };
 
 export function AppScreen({
   children,
-  language,
-  onLanguageChange,
-  user,
-  onProfilePress,
-  onTermsPress,
   contentStyle,
+  showHeader = true,
 }: AppScreenProps) {
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <AppHeader
-        language={language}
-        onLanguageChange={onLanguageChange}
-        user={user}
-        onProfilePress={onProfilePress}
-        onTermsPress={onTermsPress}
-      />
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+      {showHeader && <AppHeader />}
 
       <View style={[styles.content, contentStyle]}>{children}</View>
     </SafeAreaView>
@@ -50,10 +38,11 @@ export function AppScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.light,
   },
 
   content: {
     flex: 1,
+    backgroundColor: COLORS.light,
   },
 });

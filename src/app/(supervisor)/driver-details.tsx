@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-    ActivityIndicator,
-    Linking,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import { MessageCircle, Phone } from "lucide-react-native";
@@ -427,25 +427,25 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 40,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
 
   backButton: {
     alignSelf: "flex-start",
-    paddingVertical: 5,
-    marginBottom: 12,
+    paddingVertical: 3,
+    marginBottom: 7,
   },
 
   back: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: COLORS.secondary,
   },
 
   loading: {
-    minHeight: 200,
+    minHeight: 140,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -453,24 +453,24 @@ const styles = StyleSheet.create({
   heading: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 18,
+    marginBottom: 10,
   },
 
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
 
     alignItems: "center",
     justifyContent: "center",
 
     backgroundColor: COLORS.primary,
 
-    marginRight: 12,
+    marginRight: 9,
   },
 
   avatarText: {
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: "900",
     color: COLORS.white,
   },
@@ -481,16 +481,16 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 23,
+    fontSize: 19,
     fontWeight: "900",
     color: COLORS.primary,
   },
 
   statusBadge: {
-    marginTop: 5,
+    marginTop: 3,
 
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
 
     borderRadius: 999,
   },
@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
   },
 
   statusText: {
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: "800",
   },
 
@@ -519,27 +519,27 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.white,
 
-    borderRadius: 16,
+    borderRadius: 12,
 
-    padding: 15,
+    padding: 11,
 
     borderWidth: 1,
     borderColor: COLORS.border,
 
-    marginBottom: 12,
+    marginBottom: 8,
   },
 
   cardTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "900",
 
     color: COLORS.primary,
 
-    marginBottom: 10,
+    marginBottom: 7,
   },
 
   infoRow: {
-    paddingVertical: 10,
+    paddingVertical: 7,
 
     borderBottomWidth: StyleSheet.hairlineWidth,
 
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
   },
 
   infoLabel: {
-    fontSize: 11,
+    fontSize: 9,
 
     fontWeight: "600",
 
@@ -555,21 +555,21 @@ const styles = StyleSheet.create({
   },
 
   infoValue: {
-    marginTop: 3,
+    marginTop: 2,
 
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
 
     color: COLORS.black,
   },
 
   phoneRow: {
-    minHeight: 64,
+    minHeight: 50,
 
     flexDirection: "row",
     alignItems: "center",
 
-    paddingVertical: 9,
+    paddingVertical: 6,
   },
 
   phoneInfo: {
@@ -579,16 +579,16 @@ const styles = StyleSheet.create({
   phoneActions: {
     flexDirection: "row",
 
-    gap: 8,
+    gap: 6,
 
-    marginLeft: 12,
+    marginLeft: 8,
   },
 
   contactButton: {
-    width: 38,
-    height: 38,
+    width: 32,
+    height: 32,
 
-    borderRadius: 10,
+    borderRadius: 8,
 
     alignItems: "center",
     justifyContent: "center",
@@ -605,69 +605,73 @@ const styles = StyleSheet.create({
 
   statGrid: {
     flexDirection: "row",
-    gap: 10,
+    gap: 7,
   },
 
   miniStat: {
     flex: 1,
 
-    minHeight: 74,
+    minHeight: 56,
 
-    padding: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
 
-    borderRadius: 12,
+    borderRadius: 9,
 
     backgroundColor: COLORS.light,
 
     borderWidth: 1,
     borderColor: COLORS.border,
+
+    justifyContent: "center",
   },
 
   miniStatValue: {
-    fontSize: 20,
-    fontWeight: "900",
-
-    color: COLORS.primary,
-  },
-
-  miniStatLabel: {
-    marginTop: 3,
-
-    fontSize: 11,
-
-    color: COLORS.muted,
-  },
-
-  workBox: {
-    marginTop: 10,
-
-    padding: 12,
-
-    borderRadius: 12,
-
-    backgroundColor: COLORS.light,
-
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.secondary,
-  },
-
-  workLabel: {
-    fontSize: 11,
-
-    color: COLORS.muted,
-  },
-
-  workValue: {
-    marginTop: 3,
-
     fontSize: 17,
     fontWeight: "900",
 
     color: COLORS.primary,
   },
 
-  locationText: {
+  miniStatLabel: {
+    marginTop: 2,
+
+    fontSize: 9,
+
+    color: COLORS.muted,
+  },
+
+  workBox: {
+    marginTop: 7,
+
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
+
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.secondary,
+  },
+
+  workLabel: {
+    fontSize: 9,
+
+    color: COLORS.muted,
+  },
+
+  workValue: {
+    marginTop: 2,
+
     fontSize: 14,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  locationText: {
+    fontSize: 12,
 
     fontWeight: "800",
 
@@ -675,45 +679,46 @@ const styles = StyleSheet.create({
   },
 
   locationDate: {
-    marginTop: 5,
+    marginTop: 3,
 
-    fontSize: 11,
+    fontSize: 9,
 
     color: COLORS.muted,
   },
 
   muted: {
-    fontSize: 13,
+    fontSize: 11,
 
     color: COLORS.muted,
   },
 
   errorBox: {
-    padding: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
 
-    borderRadius: 10,
+    borderRadius: 8,
 
     backgroundColor: COLORS.errorBackground,
 
-    marginBottom: 12,
+    marginBottom: 8,
   },
 
   errorText: {
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 10,
+    lineHeight: 14,
 
     color: COLORS.error,
   },
 
   statusButton: {
-    height: 47,
+    height: 38,
 
-    borderRadius: 11,
+    borderRadius: 9,
 
     alignItems: "center",
     justifyContent: "center",
 
-    marginTop: 4,
+    marginTop: 2,
   },
 
   disableButton: {
@@ -735,7 +740,7 @@ const styles = StyleSheet.create({
   buttonText: {
     color: COLORS.white,
 
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "800",
   },
 });

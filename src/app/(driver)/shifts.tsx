@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-    ActivityIndicator,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import { router } from "expo-router";
@@ -23,10 +23,10 @@ import { useLanguage } from "../../context/LanguageContext";
 import type { DriverShift } from "../../types/shift";
 
 import {
-    formatDateTime,
-    formatDuration,
-    getElapsedSeconds,
-    getErrorMessage,
+  formatDateTime,
+  formatDuration,
+  getElapsedSeconds,
+  getErrorMessage,
 } from "../../utils";
 
 export default function ShiftsScreen() {
@@ -63,9 +63,7 @@ export default function ShiftsScreen() {
   }, [loadShifts]);
 
   return (
-    <AppScreen
-
-    >
+    <AppScreen>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         <Pressable onPress={() => router.back()}>
           <Text style={styles.back}>{t("common.back", "Back")}</Text>

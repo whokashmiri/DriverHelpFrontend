@@ -2,10 +2,10 @@ import { io, Socket } from "socket.io-client";
 
 import { getToken } from "../api/client";
 
-const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
+// const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
 
 // For local development:
-// const SOCKET_URL = "http://192.168.0.198:9001";
+const SOCKET_URL = "http://192.168.0.138:9000";
 
 let socket: Socket | null = null;
 

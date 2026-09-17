@@ -1,13 +1,14 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
-export const SERVER_URL = "https://driverhelp.167.71.231.64.nip.io";
+// Production:
+// export const SERVER_URL =
+//   "https://driverhelp.167.71.231.64.nip.io";
+
+// Local development:
+export const SERVER_URL = "http://192.168.0.138:9000";
 
 export const API_BASE_URL = `${SERVER_URL}/api`;
-
-// For local development:
-// export const SERVER_URL = "http://192.168.0.198:9001";
-// export const API_BASE_URL = `${SERVER_URL}/api`;
 
 const AUTH_TOKEN_KEY = "authToken";
 

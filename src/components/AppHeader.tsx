@@ -1,42 +1,34 @@
 import { FileText, MoreVertical, UserRound, X } from "lucide-react-native";
+
 import { useMemo, useState } from "react";
+
 import {
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
-type AppLanguage = "en" | "ar";
+import { router } from "expo-router";
 
-type AppHeaderUser = {
-  id: string;
-  name?: string;
-  iqamaId?: string;
-  role?: "driver" | "supervisor" | "admin";
+import { useLanguage } from "../context/LanguageContext";
+import { useAuth } from "../hooks/useAuth";
+
+const COLORS = {
+  black: "#0A090C",
+  light: "#F0EDEE",
+  primary: "#07393C",
+  secondary: "#2C666E",
+  white: "#FFFFFF",
 };
 
-type AppHeaderProps = {
-  language: AppLanguage;
+export function AppHeader() {
+  const { user } = useAuth();
 
-  onLanguageChange: (language: AppLanguage) => void;
+  const { language, setLanguage } = useLanguage();
 
-  user?: AppHeaderUser | null;
-
-  onProfilePress?: () => void;
-
-  onTermsPress?: () => void;
-};
-
-export function AppHeader({
-  language,
-  onLanguageChange,
-  user,
-  onProfilePress,
-  onTermsPress,
-}: AppHeaderProps) {
   const [menuVisible, setMenuVisible] = useState(false);
 
   const isArabic = language === "ar";
@@ -59,12 +51,22 @@ export function AppHeader({
 
   const handleProfilePress = () => {
     closeMenu();
-    onProfilePress?.();
+
+    if (user?.role === "driver") {
+      router.push("/(driver)/profile");
+
+      return;
+    }
+
+    if (user?.role === "supervisor") {
+      router.push("/(supervisor)/profile");
+    }
   };
 
   const handleTermsPress = () => {
     closeMenu();
-    onTermsPress?.();
+
+    router.push("/terms");
   };
 
   return (
@@ -77,15 +79,17 @@ export function AppHeader({
         <View style={styles.actions}>
           <View style={styles.languageToggle}>
             <Pressable
-              onPress={() => onLanguageChange("en")}
+              onPress={() => setLanguage("en")}
               style={[
                 styles.languageButton,
+
                 language === "en" && styles.languageButtonActive,
               ]}
             >
               <Text
                 style={[
                   styles.languageText,
+
                   language === "en" && styles.languageTextActive,
                 ]}
               >
@@ -94,15 +98,17 @@ export function AppHeader({
             </Pressable>
 
             <Pressable
-              onPress={() => onLanguageChange("ar")}
+              onPress={() => setLanguage("ar")}
               style={[
                 styles.languageButton,
+
                 language === "ar" && styles.languageButtonActive,
               ]}
             >
               <Text
                 style={[
                   styles.languageText,
+
                   language === "ar" && styles.languageTextActive,
                 ]}
               >
@@ -116,7 +122,7 @@ export function AppHeader({
             style={styles.menuButton}
             activeOpacity={0.7}
           >
-            <MoreVertical size={22} color="#111827" />
+            <MoreVertical size={21} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -135,8 +141,12 @@ export function AppHeader({
             <View style={styles.menuHeader}>
               <Text style={styles.menuTitle}>TOSH</Text>
 
-              <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
-                <X size={20} color="#374151" />
+              <TouchableOpacity
+                onPress={closeMenu}
+                style={styles.closeButton}
+                activeOpacity={0.7}
+              >
+                <X size={18} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
 
@@ -144,7 +154,7 @@ export function AppHeader({
               <>
                 <View style={styles.userBlock}>
                   <View style={styles.avatar}>
-                    <UserRound size={20} color="#111827" />
+                    <UserRound size={19} color={COLORS.primary} />
                   </View>
 
                   <View style={styles.userInfo}>
@@ -166,12 +176,16 @@ export function AppHeader({
                   </View>
                 </View>
 
+                <View style={styles.divider} />
+
                 <TouchableOpacity
                   style={styles.menuItem}
                   onPress={handleProfilePress}
                   activeOpacity={0.7}
                 >
-                  <UserRound size={19} color="#374151" />
+                  <View style={styles.menuIcon}>
+                    <UserRound size={18} color={COLORS.secondary} />
+                  </View>
 
                   <Text style={styles.menuItemText}>{labels.profile}</Text>
                 </TouchableOpacity>
@@ -183,7 +197,9 @@ export function AppHeader({
               onPress={handleTermsPress}
               activeOpacity={0.7}
             >
-              <FileText size={19} color="#374151" />
+              <View style={styles.menuIcon}>
+                <FileText size={18} color={COLORS.secondary} />
+              </View>
 
               <Text style={styles.menuItemText}>{labels.terms}</Text>
             </TouchableOpacity>
@@ -196,14 +212,19 @@ export function AppHeader({
 
 const styles = StyleSheet.create({
   container: {
-    height: 64,
+    height: 58,
+
     paddingHorizontal: 16,
+
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#FFFFFF",
+
+    backgroundColor: COLORS.white,
+
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
+
+    borderBottomColor: "#D3D8D8",
   },
 
   brandContainer: {
@@ -211,76 +232,99 @@ const styles = StyleSheet.create({
   },
 
   brand: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#111827",
-    letterSpacing: 1,
+    fontSize: 15,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+
+    letterSpacing: 1.3,
   },
 
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
 
   languageToggle: {
     flexDirection: "row",
     alignItems: "center",
+
     padding: 3,
-    borderRadius: 10,
-    backgroundColor: "#F3F4F6",
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
   },
 
   languageButton: {
-    minWidth: 34,
-    height: 30,
-    paddingHorizontal: 8,
+    minWidth: 32,
+    height: 28,
+
+    paddingHorizontal: 7,
+
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+
+    borderRadius: 7,
   },
 
   languageButtonActive: {
-    backgroundColor: "#111827",
+    backgroundColor: COLORS.primary,
   },
 
   languageText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#6B7280",
+
+    color: COLORS.secondary,
   },
 
   languageTextActive: {
-    color: "#FFFFFF",
+    color: COLORS.white,
   },
 
   menuButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
+
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 10,
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
   },
 
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.25)",
+
+    backgroundColor: "rgba(10, 9, 12, 0.30)",
   },
 
   menu: {
     position: "absolute",
-    top: 56,
-    width: 280,
-    borderRadius: 16,
+
+    top: 54,
+
+    width: 270,
+
     padding: 14,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
+
+    borderRadius: 16,
+
+    backgroundColor: COLORS.white,
+
+    shadowColor: COLORS.black,
+
+    shadowOpacity: 0.14,
     shadowRadius: 16,
+
     shadowOffset: {
       width: 0,
       height: 6,
     },
+
     elevation: 8,
   },
 
@@ -296,40 +340,54 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+
+    marginBottom: 8,
   },
 
   menuTitle: {
     fontSize: 17,
-    fontWeight: "800",
-    color: "#111827",
+    fontWeight: "900",
+
+    color: COLORS.primary,
+
+    letterSpacing: 0.8,
   },
 
   closeButton: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
+
     alignItems: "center",
     justifyContent: "center",
+
     borderRadius: 8,
-    backgroundColor: "#F3F4F6",
+
+    backgroundColor: COLORS.light,
   },
 
   userBlock: {
     flexDirection: "row",
     alignItems: "center",
+
     paddingVertical: 10,
-    paddingHorizontal: 4,
-    marginBottom: 6,
+    paddingHorizontal: 3,
   },
 
   avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+
+    borderRadius: 20,
+
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F3F4F6",
+
+    backgroundColor: COLORS.light,
+
     marginRight: 10,
+
+    borderWidth: 1,
+    borderColor: "#D4DEDE",
   },
 
   userInfo: {
@@ -337,38 +395,70 @@ const styles = StyleSheet.create({
   },
 
   userName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#111827",
+    fontSize: 14,
+    fontWeight: "800",
+
+    color: COLORS.black,
   },
 
   userSubText: {
     marginTop: 2,
+
     fontSize: 12,
-    color: "#6B7280",
+
+    color: COLORS.secondary,
   },
 
   roleText: {
     marginTop: 2,
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#6B7280",
+
+    fontSize: 10,
+    fontWeight: "700",
+
+    color: COLORS.primary,
+
     textTransform: "capitalize",
   },
 
+  divider: {
+    height: StyleSheet.hairlineWidth,
+
+    backgroundColor: "#D8DEDE",
+
+    marginVertical: 5,
+  },
+
   menuItem: {
-    minHeight: 48,
+    minHeight: 46,
+
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 10,
+
+    gap: 10,
+
+    paddingHorizontal: 8,
+
     borderRadius: 10,
+  },
+
+  menuIcon: {
+    width: 30,
+    height: 30,
+
+    borderRadius: 8,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    backgroundColor: COLORS.light,
   },
 
   menuItemText: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
+
+    fontSize: 13,
+    fontWeight: "700",
+
+    color: COLORS.black,
   },
 });

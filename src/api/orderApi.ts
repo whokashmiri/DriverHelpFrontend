@@ -1,47 +1,14 @@
-import { api } from "./client";
+import * as FileSystem from "expo-file-system/legacy";
+import {
+  type ActiveOrderResponse,
+  type CompleteOrderDeliveryPayload,
+  type CreatePickupOrderPayload,
+  type DeleteOrderResponse,
+  type OrderResponse,
+  type OrdersResponse,
+} from "../types/order";
 
-export interface OrderPhotoInput {
-  uri: string;
-  time: Date;
-}
-
-export interface OrderPhoto {
-  url: string;
-  publicId: string;
-  takenAt: string;
-}
-
-export type OrderStatus = "picked_up" | "delivered";
-
-export interface Order {
-  _id: string;
-
-  rider:
-    | string
-    | {
-        _id: string;
-        name?: string;
-        iqamaId?: string;
-      };
-
-  supervisor: string;
-
-  pickupPhoto: OrderPhoto;
-
-  deliveryPhoto: OrderPhoto | null;
-
-  pickupTime: string;
-  deliveryTime: string | null;
-
-  durationSeconds: number | null;
-
-  status: OrderStatus;
-
-  notes: string;
-
-  createdAt: string;
-  updatedAt: string;
-}
+import { api, API_BASE_URL, getToken } from "./client";
 
 function getFileFromUri(uri: string, name: string) {
   const cleanUri = uri.split("?")[0];
@@ -65,87 +32,140 @@ function getFileFromUri(uri: string, name: string) {
   } as any;
 }
 
-export async function createPickupOrder(params: {
-  pickupPhoto: OrderPhotoInput;
-  notes?: string;
-}) {
-  const formData = new FormData();
-
-  formData.append(
-    "pickupPhoto",
-    getFileFromUri(params.pickupPhoto.uri, "pickup"),
-  );
-
-  formData.append("pickupTime", params.pickupPhoto.time.toISOString());
-
-  if (params.notes?.trim()) {
-    formData.append("notes", params.notes.trim());
+export async function createPickupOrder(params: CreatePickupOrderPayload) {
+  if (!params.pickupPhoto?.uri) {
+    throw new Error("Pickup photo URI is missing");
   }
 
-  const response = await api.post<{
-    success: boolean;
-    message: string;
-    order: Order;
-  }>("/orders/pickup", formData);
+  const token = await getToken();
 
-  return response.data;
-}
+  const response = await FileSystem.uploadAsync(
+    `${API_BASE_URL}/orders/pickup`,
+    params.pickupPhoto.uri,
+    {
+      httpMethod: "POST",
 
-export async function completeOrderDelivery(params: {
-  orderId: string;
-  deliveryPhoto: OrderPhotoInput;
-}) {
-  const formData = new FormData();
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
 
-  formData.append(
-    "deliveryPhoto",
-    getFileFromUri(params.deliveryPhoto.uri, "delivery"),
+      fieldName: "pickupPhoto",
+
+      mimeType: "image/jpeg",
+
+      parameters: {
+        pickupTime: params.pickupPhoto.time.toISOString(),
+
+        ...(params.notes?.trim()
+          ? {
+              notes: params.notes.trim(),
+            }
+          : {}),
+      },
+
+      headers: {
+        Accept: "application/json",
+
+        ...(token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {}),
+      },
+    },
   );
 
-  formData.append("deliveryTime", params.deliveryPhoto.time.toISOString());
+  let data: OrderResponse;
 
-  const response = await api.patch<{
-    success: boolean;
-    message: string;
-    order: Order;
-  }>(`/orders/${params.orderId}/delivery`, formData);
+  try {
+    data = JSON.parse(response.body);
+  } catch {
+    throw new Error(`Invalid server response: ${response.body}`);
+  }
 
-  return response.data;
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(data?.message || "Unable to create pickup order");
+  }
+
+  return data;
+}
+
+export async function completeOrderDelivery(
+  params: CompleteOrderDeliveryPayload,
+) {
+  if (!params.deliveryPhoto?.uri) {
+    throw new Error("Delivery photo URI is missing");
+  }
+
+  const token = await getToken();
+
+  const response = await FileSystem.uploadAsync(
+    `${API_BASE_URL}/orders/${params.orderId}/delivery`,
+    params.deliveryPhoto.uri,
+    {
+      httpMethod: "PATCH",
+
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+
+      fieldName: "deliveryPhoto",
+
+      mimeType: "image/jpeg",
+
+      parameters: {
+        deliveryTime: params.deliveryPhoto.time.toISOString(),
+      },
+
+      headers: {
+        Accept: "application/json",
+
+        ...(token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {}),
+      },
+    },
+  );
+
+  let data: OrderResponse;
+
+  try {
+    data = JSON.parse(response.body);
+  } catch {
+    throw new Error(`Invalid server response: ${response.body}`);
+  }
+
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(data?.message || "Unable to complete delivery");
+  }
+
+  return data;
 }
 
 export async function getActiveOrder() {
-  const response = await api.get<{
-    success: boolean;
-    order: Order | null;
-  }>("/orders/active");
+  const response = await api.get<ActiveOrderResponse>("/orders/active");
 
   return response.data;
 }
 
 export async function getMyOrders() {
-  const response = await api.get<{
-    success: boolean;
-    count: number;
-    orders: Order[];
-  }>("/orders/my");
+  const response = await api.get<OrdersResponse>("/orders/my");
 
   return response.data;
 }
 
 export async function getOrderById(orderId: string) {
-  const response = await api.get<{
-    success: boolean;
-    order: Order;
-  }>(`/orders/${orderId}`);
+  const response = await api.get<OrderResponse>(`/orders/${orderId}`);
 
   return response.data;
 }
 
 export async function deleteOrder(orderId: string) {
-  const response = await api.delete<{
-    success: boolean;
-    message: string;
-  }>(`/orders/${orderId}`);
+  const response = await api.delete<DeleteOrderResponse>(`/orders/${orderId}`);
+
+  return response.data;
+}
+
+export async function getSupervisorActiveOrders() {
+  const response = await api.get<OrdersResponse>("/orders/supervisor/active");
 
   return response.data;
 }
