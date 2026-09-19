@@ -3,5 +3,8 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
-  }
+  },
+  "editor.fontLigatures": true,
+  "editor.fontFamily": "JetBarins Mono , Fira Code , Cascadia Code",
+  "workbench.iconTheme": "material-icon-theme"
 }

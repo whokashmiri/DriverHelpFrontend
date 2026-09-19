@@ -398,20 +398,41 @@ export default function LiveMapScreen() {
                     <View style={styles.markerWrapper}>
                       <View
                         style={[
-                          styles.marker,
-
-                          selected && styles.markerSelected,
+                          styles.markerLabel,
+                          selected && styles.markerLabelSelected,
                         ]}
                       >
-                        <Text style={styles.markerText}>
-                          {getDriverInitial(driver?.name)}
-                        </Text>
+                        <View
+                          style={[
+                            styles.marker,
+                            selected && styles.markerSelected,
+                          ]}
+                        >
+                          <Text style={styles.markerText}>
+                            {getDriverInitial(driver?.name)}
+                          </Text>
+                        </View>
+
+                        <View style={styles.markerDriverInfo}>
+                          <Text
+                            numberOfLines={1}
+                            style={styles.markerDriverName}
+                          >
+                            {driver?.name ?? t("drivers.driver", "Driver")}
+                          </Text>
+
+                          <Text
+                            numberOfLines={1}
+                            style={styles.markerDriverIqama}
+                          >
+                            {driver?.iqamaId ?? "-"}
+                          </Text>
+                        </View>
                       </View>
 
                       <View
                         style={[
                           styles.markerPointer,
-
                           selected && styles.markerPointerSelected,
                         ]}
                       />
@@ -848,55 +869,100 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  marker: {
-    width: 34,
-    height: 34,
+  markerLabel: {
+    minWidth: 118,
+    maxWidth: 165,
 
-    borderRadius: 17,
+    minHeight: 42,
 
-    borderWidth: 3,
+    flexDirection: "row",
+    alignItems: "center",
+
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+
+    borderRadius: 10,
+
+    borderWidth: 2,
     borderColor: COLORS.white,
+
+    backgroundColor: COLORS.white,
+
+    elevation: 5,
+  },
+
+  markerLabelSelected: {
+    borderColor: COLORS.primary,
+
+    transform: [
+      {
+        scale: 1.05,
+      },
+    ],
+  },
+
+  marker: {
+    width: 32,
+    height: 32,
+
+    flexShrink: 0,
+
+    borderRadius: 16,
 
     alignItems: "center",
     justifyContent: "center",
 
     backgroundColor: COLORS.secondary,
-
-    elevation: 5,
   },
 
   markerSelected: {
     backgroundColor: COLORS.primary,
-
-    transform: [
-      {
-        scale: 1.15,
-      },
-    ],
   },
 
   markerText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
 
     color: COLORS.white,
+  },
+
+  markerDriverInfo: {
+    flex: 1,
+
+    minWidth: 0,
+
+    marginLeft: 6,
+  },
+
+  markerDriverName: {
+    fontSize: 8,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  markerDriverIqama: {
+    marginTop: 1,
+
+    fontSize: 7,
+
+    color: COLORS.muted,
   },
 
   markerPointer: {
     width: 0,
     height: 0,
 
-    marginTop: -2,
+    marginTop: -1,
 
     borderLeftWidth: 5,
     borderRightWidth: 5,
     borderTopWidth: 7,
 
     borderLeftColor: "transparent",
-
     borderRightColor: "transparent",
 
-    borderTopColor: COLORS.secondary,
+    borderTopColor: COLORS.white,
   },
 
   markerPointerSelected: {
