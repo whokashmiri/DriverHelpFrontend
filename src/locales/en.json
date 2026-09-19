@@ -196,7 +196,24 @@
   "auth": {
     "logout": "Logout",
     "logoutFailed": "Unable to logout",
-    "password": "Password"
+    "password": "Password",
+     "loginTitle": "Login",
+    "loginSubtitle": "Enter your Iqama ID and password",
+
+    "iqamaId": "Iqama ID",
+    "iqamaPlaceholder": "Enter Iqama ID",
+    "passwordPlaceholder": "Enter password",
+
+    "iqamaRequired": "Iqama ID is required",
+    "passwordRequired": "Password is required",
+
+    "login": "Login",
+    "loginFailed": "Unable to login",
+
+    "unsupportedRole": "This account cannot access the mobile application",
+
+    "noAccount": "Don't have an account?",
+    "register": "Register"
   },
   "drivers": {
     "title": "Drivers",

@@ -198,7 +198,25 @@
   "auth": {
     "logout": "تسجيل الخروج",
     "logoutFailed": "تعذر تسجيل الخروج",
-    "password": "كلمة المرور"
+    "password": "كلمة المرور",
+    "loginTitle": "تسجيل الدخول",
+    "loginSubtitle": "أدخل رقم الإقامة وكلمة المرور",
+
+    "iqamaId": "رقم الإقامة",
+    "iqamaPlaceholder": "أدخل رقم الإقامة",
+
+    "passwordPlaceholder": "أدخل كلمة المرور",
+
+    "iqamaRequired": "رقم الإقامة مطلوب",
+    "passwordRequired": "كلمة المرور مطلوبة",
+
+    "login": "تسجيل الدخول",
+    "loginFailed": "تعذر تسجيل الدخول",
+
+    "unsupportedRole": "لا يمكن لهذا الحساب الوصول إلى تطبيق الجوال",
+
+    "noAccount": "ليس لديك حساب؟",
+    "register": "إنشاء حساب"
   },
 
   "drivers": {
