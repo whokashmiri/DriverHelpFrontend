@@ -1,0 +1,262 @@
+{
+  "common": {
+    "back": "رجوع",
+    "reset": "إعادة تعيين",
+    "done": "تم",
+    "optional": "اختياري",
+    "permissionRequired": "الإذن مطلوب",
+    "active": "نشط",
+    "inactive": "غير نشط",
+
+    "viewAll": "عرض جميع السائقين",
+
+    "retry": "إعادة المحاولة"
+  },
+
+  "stats": {
+    "title": "الإحصائيات",
+    "supervisorSubtitle": "متابعة نشاط السائقين وأداء العمل",
+
+    "today": "اليوم",
+    "week": "هذا الأسبوع",
+    "month": "هذا الشهر",
+
+    "orders": "الطلبات",
+    "delivered": "تم التوصيل",
+    "workingTime": "وقت العمل",
+    "workTime": "العمل",
+
+    "loadFailed": "تعذر تحميل الإحصائيات",
+
+    "customRange": "تقرير مخصص",
+    "customRangeSubtitle": "تصفية حسب التاريخ والسائق",
+
+    "driver": "السائق",
+    "wholeTeam": "جميع السائقين",
+    "allDrivers": "كل السائقين",
+
+    "from": "من",
+    "to": "إلى",
+
+    "invalidDate": "استخدم تنسيق التاريخ YYYY-MM-DD",
+    "invalidRange": "تاريخ النهاية لا يمكن أن يكون قبل تاريخ البداية",
+
+    "rangeLoadFailed": "تعذر تحميل الإحصائيات المفلترة",
+
+    "applyFilter": "تطبيق الفلتر",
+
+    "quickOverview": "نظرة عامة سريعة",
+
+    "activeOrders": "نشط",
+
+    "team": "الفريق",
+
+    "selectDriver": "اختر السائق",
+    "selectDriverDescription": "اختر سائقًا واحدًا أو جميع السائقين"
+  },
+
+  "header": {
+    "profile": "الملف الشخصي",
+    "terms": "الشروط والأحكام",
+    "english": "EN",
+    "arabic": "ع"
+  },
+
+  "supervisor": {
+    "dashboard": "لوحة تحكم المشرف",
+    "dashboardLoadFailed": "تعذر تحميل لوحة التحكم",
+
+    "totalDrivers": "السائقون",
+    "drivers": "السائقون",
+
+    "workingNow": "يعمل الآن",
+    "notWorking": "لا يعمل",
+
+    "noWorkingDrivers": "لم يبدأ أي سائق العمل بعد",
+    "allDriversStarted": "جميع السائقين بدأوا العمل",
+    "noDrivers": "لا يوجد سائقون",
+
+    "quickActions": "إجراءات سريعة",
+
+    "allDrivers": "السائقون",
+    "liveMap": "الخريطة المباشرة"
+  },
+
+  "terms": {
+    "title": "الشروط والأحكام",
+    "lastUpdated": "آخر تحديث: سبتمبر 2026",
+
+    "useTitle": "استخدام التطبيق",
+    "useBody": "يتم توفير تطبيق TOSH للسائقين والمشرفين المصرح لهم لإدارة عمليات التوصيل، ومناوبات العمل، والطلبات، والمعلومات التشغيلية ذات الصلة.",
+
+    "locationTitle": "معلومات الموقع",
+    "locationBody": "قد يتم جمع معلومات موقع السائق أثناء مناوبات العمل النشطة لدعم المراقبة التشغيلية، وإدارة عمليات التوصيل، وسجل المسارات.",
+
+    "accountTitle": "مسؤولية الحساب",
+    "accountBody": "يتحمل المستخدمون مسؤولية الحفاظ على سرية بيانات تسجيل الدخول الخاصة بهم واستخدام التطبيق فقط لأغراض العمل المصرح بها.",
+
+    "photosTitle": "صور التوصيل",
+    "photosBody": "قد يتم الاحتفاظ بصور الاستلام والتوصيل التي يتم إرسالها عبر التطبيق كجزء من سجل عمليات التوصيل.",
+
+    "changesTitle": "التغييرات",
+    "changesBody": "قد يتم تحديث هذه الشروط من وقت لآخر. ويُعد استمرار استخدام التطبيق بعد أي تحديث موافقة على الشروط المعدلة."
+  },
+
+  "driver": {
+    "welcome": "مرحبًا",
+    "home": "الرئيسية",
+    "orders": "الطلبات",
+    "shifts": "المناوبات",
+    "stats": "الإحصائيات",
+
+    "activeOrderFailed": "تعذر تحميل الطلبات",
+    "startShiftFirst": "ابدأ المناوبة أولاً",
+    "newOrder": "طلب جديد",
+    "activeDelivery": "توصيل نشط",
+
+    "startShift": "بدء المناوبة",
+    "endShift": "إنهاء المناوبة",
+
+    "recentDeliveries": "عمليات التوصيل الأخيرة",
+    "delivery": "التوصيل",
+    "active": "نشط",
+    "done": "مكتمل",
+
+    "noOrdersForPeriod": "لا توجد طلبات خلال هذه الفترة"
+  },
+
+  "orders": {
+    "pickup": "الاستلام",
+    "deliveryPhoto": "التوصيل",
+
+    "pickupTime": "وقت الاستلام",
+    "deliveryTime": "وقت التوصيل",
+
+    "cameraPermission": "يلزم السماح بالوصول إلى الكاميرا.",
+
+    "photoFailed": "تعذر التقاط الصورة",
+    "pickupUploadFailed": "تعذر حفظ صورة الاستلام",
+    "deliveryUploadFailed": "تعذر إكمال التوصيل",
+
+    "notesPlaceholder": "إضافة ملاحظات",
+    "notesSaved": "تم الحفظ مع الاستلام",
+    "notesBeforePickup": "سيتم حفظ هذه الملاحظة مع عملية الاستلام.",
+
+    "loadFailed": "تعذر تحميل الطلبات",
+    "history": "سجل الطلبات",
+    "empty": "لا توجد طلبات",
+    "delivered": "تم التوصيل",
+    "pickedUp": "تم الاستلام",
+
+    "delivery": "التوصيل",
+    "duration": "المدة",
+    "title": "الطلبات",
+
+    "activeOrders": "الطلبات النشطة",
+    "supervisorSubtitle": "عرض الطلبات النشطة الخاصة بسائقيك",
+
+    "active": "نشط",
+
+    "loading": "جارٍ تحميل الطلبات النشطة...",
+
+    "noActiveOrders": "لا توجد طلبات نشطة",
+    "noActiveOrdersDescription": "لا توجد حاليًا طلبات استلام نشطة لدى السائقين."
+  },
+
+  "shifts": {
+    "loadFailed": "تعذر تحميل المناوبات",
+    "emptyForPeriod": "لا توجد مناوبات خلال هذه الفترة",
+    "history": "سجل المناوبات",
+    "empty": "لا توجد مناوبات",
+    "active": "نشطة",
+    "completed": "مكتملة",
+    "start": "البداية",
+    "end": "النهاية"
+  },
+
+  "filters": {
+    "today": "اليوم",
+    "sevenDays": "7 أيام",
+    "thirtyDays": "30 يومًا",
+    "all": "الكل"
+  },
+
+  "profile": {
+    "driver": "سائق",
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "accountInformation": "معلومات الحساب",
+    "name": "الاسم",
+    "iqama": "رقم الإقامة",
+    "role": "الدور",
+    "status": "الحالة",
+    "phone": "رقم الهاتف",
+    "title": "الملف الشخصي",
+    "supervisor": "مشرف"
+  },
+
+  "auth": {
+    "logout": "تسجيل الخروج",
+    "logoutFailed": "تعذر تسجيل الخروج",
+    "password": "كلمة المرور"
+  },
+
+  "drivers": {
+    "title": "السائقون",
+    "subtitle": "إنشاء وإدارة سائقي التوصيل",
+
+    "create": "إنشاء سائق",
+    "createSubtitle": "أدخل معلومات حساب السائق",
+
+    "namePlaceholder": "أدخل اسم السائق",
+    "iqamaPlaceholder": "أدخل رقم الإقامة",
+    "phonePlaceholder": "أدخل رقم الهاتف",
+    "passwordPlaceholder": "6 أحرف على الأقل",
+
+    "createDriver": "إنشاء سائق",
+
+    "yourDrivers": "السائقون لديك",
+
+    "driver": "سائق",
+    "viewDriver": "عرض السائق",
+
+    "noDrivers": "لا يوجد سائقون بعد",
+    "noDriversDescription": "أنشئ أول سائق باستخدام النموذج أعلاه.",
+
+    "loadFailed": "تعذر تحميل السائقين",
+    "invalidCreate": "الاسم ورقم الإقامة وكلمة مرور لا تقل عن 6 أحرف مطلوبة",
+    "createFailed": "تعذر إنشاء السائق",
+
+    "detailsLoadFailed": "تعذر تحميل بيانات السائق",
+    "statusFailed": "تعذر تحديث حالة السائق",
+
+    "information": "معلومات السائق",
+
+    "deactivate": "تعطيل السائق",
+    "activate": "تفعيل السائق",
+
+    "callFailed": "تعذر فتح تطبيق الهاتف",
+    "whatsappFailed": "تعذر فتح واتساب"
+  },
+
+  "location": {
+    "latest": "آخر موقع",
+    "none": "لا يوجد موقع متاح",
+    "loadFailed": "تعذر تحميل مواقع السائقين",
+    "liveTracking": "مواقع السائقين",
+
+    "onMap": "على الخريطة",
+    "showAll": "عرض الكل",
+
+    "refreshFailed": "فشل التحديث — اضغط لإعادة المحاولة",
+
+    "noDriverLocations": "لا توجد مواقع للسائقين",
+    "waitingForLocations": "ستظهر مواقع السائقين هنا عند بدء تتبع الموقع.",
+
+    "latitude": "خط العرض",
+    "longitude": "خط الطول",
+
+    "loading": "جارٍ تحميل المواقع...",
+    "unavailable": "الموقع غير متاح"
+  }
+}

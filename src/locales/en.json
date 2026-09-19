@@ -1,0 +1,259 @@
+{
+  "common": {
+    "back": "Back",
+    "reset": "Reset",
+    "done": "Done",
+    "optional": "Optional",
+    "permissionRequired": "Permission Required",
+    "active": "Active",
+    "inactive": "Inactive",
+
+    "viewAll": "View All Drivers",
+
+    "retry": "Retry"
+  },
+
+  "stats": {
+    "title": "Statistics",
+    "supervisorSubtitle": "Monitor driver activity and work performance",
+
+    "today": "Today",
+    "week": "This Week",
+    "month": "This Month",
+
+    "orders": "Orders",
+    "delivered": "Delivered",
+    "workingTime": "Working Time",
+    "workTime": "Work",
+
+    "loadFailed": "Unable to load statistics",
+
+    "customRange": "Custom Report",
+    "customRangeSubtitle": "Filter by dates and driver",
+
+    "driver": "Driver",
+    "wholeTeam": "Whole Team",
+    "allDrivers": "All drivers",
+
+    "from": "From",
+    "to": "To",
+
+    "invalidDate": "Use date format YYYY-MM-DD",
+    "invalidRange": "To date cannot be before From date",
+
+    "rangeLoadFailed": "Unable to load filtered statistics",
+
+    "applyFilter": "Apply Filter",
+
+    "quickOverview": "Quick Overview",
+
+    "activeOrders": "Active",
+
+    "team": "Team",
+
+    "selectDriver": "Select Driver",
+    "selectDriverDescription": "Choose one driver or the whole team"
+  },
+
+  "header": {
+    "profile": "Profile",
+    "terms": "Terms & Conditions",
+    "english": "EN",
+    "arabic": "AR"
+  },
+
+  "supervisor": {
+    "dashboard": "Supervisor Dashboard",
+    "dashboardLoadFailed": "Unable to load dashboard",
+
+    "totalDrivers": "Drivers",
+    "drivers": "Drivers",
+
+    "workingNow": "Working",
+    "notWorking": "Not Working",
+
+    "noWorkingDrivers": "No drivers have started work yet",
+    "allDriversStarted": "All drivers have started work",
+    "noDrivers": "No drivers found",
+
+    "quickActions": "Quick Actions",
+
+    "allDrivers": "Drivers",
+    "liveMap": "Live Map"
+  },
+  "terms": {
+    "title": "Terms & Conditions",
+    "lastUpdated": "Last updated: September 2026",
+
+    "useTitle": "Use of the Application",
+    "useBody": "The TOSH application is provided for authorized drivers and supervisors to manage delivery operations, work shifts, orders, and related operational information.",
+
+    "locationTitle": "Location Information",
+    "locationBody": "Driver location information may be collected during active work shifts to support operational monitoring, delivery management, and route history.",
+
+    "accountTitle": "Account Responsibility",
+    "accountBody": "Users are responsible for maintaining the confidentiality of their login credentials and for using the application only for authorized business purposes.",
+
+    "photosTitle": "Delivery Photos",
+    "photosBody": "Pickup and delivery photos submitted through the application may be retained as part of the operational delivery record.",
+
+    "changesTitle": "Changes",
+    "changesBody": "These terms may be updated from time to time. Continued use of the application after an update constitutes acceptance of the revised terms."
+  },
+  "driver": {
+    "welcome": "Welcome",
+    "home": "Home",
+    "orders": "Orders",
+    "shifts": "Shifts",
+    "stats": "Stats",
+
+    "activeOrderFailed": "Unable to load orders",
+    "startShiftFirst": "Start your shift first",
+    "newOrder": "New Order",
+    "activeDelivery": "Active Delivery",
+
+    "startShift": "Start Shift",
+    "endShift": "End Shift",
+
+    "recentDeliveries": "Recent Deliveries",
+    "delivery": "Delivery",
+    "active": "Active",
+    "done": "Done",
+
+    "noOrdersForPeriod": "No orders found for this period"
+  },
+
+  "orders": {
+    "pickup": "Pickup",
+    "deliveryPhoto": "Delivery",
+
+    "pickupTime": "Pickup",
+    "deliveryTime": "Delivery",
+
+    "cameraPermission": "Camera permission is required.",
+
+    "photoFailed": "Unable to capture photo",
+    "pickupUploadFailed": "Unable to save pickup photo",
+    "deliveryUploadFailed": "Unable to complete delivery",
+
+    "notesPlaceholder": "Add notes",
+    "notesSaved": "Saved with pickup",
+    "notesBeforePickup": "This note will be saved with the pickup.",
+
+    "loadFailed": "Unable to load orders",
+    "history": "Order History",
+    "empty": "No orders found",
+    "delivered": "Delivered",
+    "pickedUp": "Picked up",
+
+    "delivery": "Delivery",
+    "duration": "Duration",
+    "title": "Orders",
+
+    "activeOrders": "Active Orders",
+    "supervisorSubtitle": "View active orders from your drivers",
+
+    "active": "Active",
+
+    "loading": "Loading active orders...",
+
+    "noActiveOrders": "No active orders",
+    "noActiveOrdersDescription": "Your drivers currently have no active pickup orders."
+  },
+
+  "shifts": {
+    "loadFailed": "Unable to load shifts",
+    "emptyForPeriod": "No shifts found for this period",
+    "history": "Shift History",
+    "empty": "No shifts found",
+    "active": "Active",
+    "completed": "Completed",
+    "start": "Start",
+    "end": "End"
+  },
+
+  "filters": {
+    "today": "Today",
+    "sevenDays": "7 Days",
+    "thirtyDays": "30 Days",
+    "all": "All"
+  },
+
+  "profile": {
+    "driver": "Driver",
+    "active": "Active",
+    "inactive": "Inactive",
+    "accountInformation": "Account Information",
+    "name": "Name",
+    "iqama": "Iqama ID",
+    "role": "Role",
+    "status": "Status",
+    "phone": "Phone",
+    "title": "Profile",
+    "supervisor": "Supervisor"
+  },
+
+  "auth": {
+    "logout": "Logout",
+    "logoutFailed": "Unable to logout",
+    "password": "Password"
+  },
+  "drivers": {
+    "title": "Drivers",
+    "subtitle": "Create and manage your delivery drivers",
+
+    "create": "Create Driver",
+    "createSubtitle": "Enter the driver's account information",
+
+    "namePlaceholder": "Enter driver name",
+    "iqamaPlaceholder": "Enter Iqama ID",
+    "phonePlaceholder": "Enter phone number",
+    "passwordPlaceholder": "Minimum 6 characters",
+
+    "createDriver": "Create Driver",
+
+    "yourDrivers": "Your Drivers",
+
+    "driver": "Driver",
+    "viewDriver": "View Driver",
+
+    "noDrivers": "No drivers yet",
+    "noDriversDescription": "Create your first driver using the form above.",
+
+    "loadFailed": "Unable to load drivers",
+    "invalidCreate": "Name, Iqama ID and a password of at least 6 characters are required",
+    "createFailed": "Unable to create driver",
+
+    "detailsLoadFailed": "Unable to load driver",
+    "statusFailed": "Unable to update driver status",
+
+    "information": "Driver Information",
+
+    "deactivate": "Deactivate Driver",
+    "activate": "Activate Driver",
+
+    "callFailed": "Unable to open the phone app",
+    "whatsappFailed": "Unable to open WhatsApp"
+  },
+
+  "location": {
+    "latest": "Latest Location",
+    "none": "No location available",
+    "loadFailed": "Unable to load driver locations",
+    "liveTracking": "Driver locations",
+
+    "onMap": "on map",
+    "showAll": "Show All",
+
+    "refreshFailed": "Refresh failed — tap to retry",
+
+    "noDriverLocations": "No driver locations",
+    "waitingForLocations": "Driver locations will appear here when location tracking starts.",
+
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+
+    "loading": "Loading locations...",
+    "unavailable": "Location unavailable"
+  }
+}
