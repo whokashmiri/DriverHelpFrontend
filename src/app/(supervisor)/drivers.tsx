@@ -361,12 +361,17 @@ function FormField({
   textAlign,
   editable = true,
 }: FormFieldProps) {
+  const { t } = useTranslation();
   return (
     <View style={styles.field}>
       <View style={styles.labelRow}>
         <Text style={[styles.label, { textAlign }]}>{label}</Text>
 
-        {optional && <Text style={styles.optional}>Optional</Text>}
+        {optional && (
+          <Text style={styles.optional}>
+            {t("common.optional", "Optional")}
+          </Text>
+        )}
       </View>
 
       <TextInput

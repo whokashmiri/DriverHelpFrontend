@@ -158,7 +158,11 @@
     "loading": "Loading active orders...",
 
     "noActiveOrders": "No active orders",
-    "noActiveOrdersDescription": "Your drivers currently have no active pickup orders."
+    "noActiveOrdersDescription": "Your drivers currently have no active pickup orders.",
+    "photoSaving": "Saving...",
+    "photoSaved": "Saved",
+    "photoLocked": "Locked",
+    "takePhoto": "Take photo"
   },
 
   "shifts": {
@@ -197,7 +201,7 @@
     "logout": "Logout",
     "logoutFailed": "Unable to logout",
     "password": "Password",
-     "loginTitle": "Login",
+    "loginTitle": "Login",
     "loginSubtitle": "Enter your Iqama ID and password",
 
     "iqamaId": "Iqama ID",

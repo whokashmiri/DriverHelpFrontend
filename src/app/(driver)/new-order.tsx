@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
@@ -21,9 +21,9 @@ import { useTranslation } from "react-i18next";
 import { AppScreen } from "../../components/AppScreen";
 
 import {
-    completeOrderDelivery,
-    createPickupOrder,
-    getActiveOrder,
+  completeOrderDelivery,
+  createPickupOrder,
+  getActiveOrder,
 } from "../../api/orderApi";
 
 import type { Order, OrderPhotoInput } from "../../types/order";
@@ -576,25 +576,21 @@ function PhotoButton({
   placeholder,
 }: {
   title: string;
-
   photo: OrderPhotoInput | null;
-
   loading: boolean;
   disabled: boolean;
-
   onPress: () => void;
-
   placeholder: string;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.photoButton,
-
         disabled && styles.photoButtonDisabled,
-
         pressed && !disabled && styles.photoButtonPressed,
       ]}
     >
@@ -617,12 +613,12 @@ function PhotoButton({
 
       <Text style={styles.photoAction}>
         {loading
-          ? "Saving..."
+          ? t("orders.photoSaving")
           : photo
-            ? "Saved"
+            ? t("orders.photoSaved")
             : disabled
-              ? "Locked"
-              : "Take photo"}
+              ? t("orders.photoLocked")
+              : t("orders.takePhoto")}
       </Text>
     </Pressable>
   );

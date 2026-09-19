@@ -160,7 +160,12 @@
     "loading": "جارٍ تحميل الطلبات النشطة...",
 
     "noActiveOrders": "لا توجد طلبات نشطة",
-    "noActiveOrdersDescription": "لا توجد حاليًا طلبات استلام نشطة لدى السائقين."
+    "noActiveOrdersDescription": "لا توجد حاليًا طلبات استلام نشطة لدى السائقين.",
+
+    "photoSaving": "جارٍ الحفظ...",
+    "photoSaved": "تم الحفظ",
+    "photoLocked": "مقفل",
+    "takePhoto": "التقاط صورة"
   },
 
   "shifts": {

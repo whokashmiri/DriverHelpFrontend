@@ -837,6 +837,7 @@ function CompactPhotoButton({
 
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
@@ -869,12 +870,12 @@ function CompactPhotoButton({
 
         <Text style={styles.compactPhotoStatus}>
           {loading
-            ? "Saving..."
+            ? t("orders.photoSaving", "Saving...")
             : photo
-              ? "Saved"
+              ? t("orders.photoSaved", "Saved")
               : disabled
-                ? "Locked"
-                : "Take photo"}
+                ? t("orders.photoLocked", "Locked")
+                : t("orders.takePhoto", "Take photo")}
         </Text>
       </View>
     </Pressable>
