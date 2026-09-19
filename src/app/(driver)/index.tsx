@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,11 +19,18 @@ import { useFocusEffect } from "expo-router";
 
 import { useTranslation } from "react-i18next";
 
-import { Pencil } from "lucide-react-native";
+import {
+  ImagePlus,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 
 import {
+  cancelOrder,
   completeOrderDelivery,
   createPickupOrder,
   getActiveOrder,
@@ -38,11 +46,20 @@ import { useShift } from "../../hooks/useShift";
 
 import { useLanguage } from "../../context/LanguageContext";
 
-import type { Order, OrderPhotoInput } from "../../types/order";
+import type {
+  Order,
+  OrderCancellationReason,
+  OrderPhotoInput,
+} from "../../types/order";
 import type { DriverShift } from "../../types/shift";
 import type { MyDashboardStatsResponse } from "../../types/stats";
 
-import { formatDateTime, getErrorMessage } from "../../utils";
+import {
+  compressOrderImage,
+  compressOrderImages,
+  formatDateTime,
+  getErrorMessage,
+} from "../../utils";
 
 const COLORS = {
   black: "#0A090C",
@@ -89,6 +106,22 @@ export default function DriverHomeScreen() {
 
   const [tab, setTab] = useState<DriverTabName>("home");
 
+  const [cancelOrderVisible, setCancelOrderVisible] = useState(false);
+
+  const [cancellationReason, setCancellationReason] =
+    useState<OrderCancellationReason | null>(null);
+
+  const [cancellationNotes, setCancellationNotes] = useState("");
+
+  const [cancellationPhotos, setCancellationPhotos] = useState<
+    OrderPhotoInput[]
+  >([]);
+
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+
+  const [isPreparingCancellationPhotos, setIsPreparingCancellationPhotos] =
+    useState(false);
+
   const [orderFilter, setOrderFilter] = useState<DateFilter>("today");
 
   const [shiftFilter, setShiftFilter] = useState<DateFilter>("today");
@@ -108,6 +141,7 @@ export default function DriverHomeScreen() {
   const [uploadingDelivery, setUploadingDelivery] = useState(false);
 
   const [orderElapsedSeconds, setOrderElapsedSeconds] = useState(0);
+  const [finishShiftVisible, setFinishShiftVisible] = useState(false);
 
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
 
@@ -264,8 +298,96 @@ export default function DriverHomeScreen() {
     }
   };
 
-  const handleEndShift = async () => {
+  const pickCancellationPhotos = async () => {
     try {
+      setOrderError(null);
+
+      const remaining = 5 - cancellationPhotos.length;
+
+      if (remaining <= 0) {
+        return;
+      }
+
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          t("common.permissionRequired", "Permission Required"),
+          t(
+            "orders.galleryPermission",
+            "Photo library permission is required.",
+          ),
+        );
+
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+
+        allowsMultipleSelection: true,
+
+        selectionLimit: remaining,
+
+        quality: 1,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const assets =
+        result.assets?.filter((asset) => !!asset.uri).slice(0, remaining) ?? [];
+
+      if (assets.length === 0) {
+        return;
+      }
+
+      setIsPreparingCancellationPhotos(true);
+
+      const captureTime = new Date();
+
+      const compressedUris = await compressOrderImages(
+        assets.map((asset) => asset.uri),
+        "cancellation",
+      );
+
+      const newPhotos: OrderPhotoInput[] = compressedUris.map((uri) => ({
+        uri,
+        time: captureTime,
+      }));
+
+      setCancellationPhotos((current) =>
+        [...current, ...newPhotos].slice(0, 5),
+      );
+    } catch (error) {
+      setOrderError(
+        getErrorMessage(
+          error,
+          t(
+            "orders.cancelPhotoFailed",
+            "Unable to prepare cancellation photos",
+          ),
+        ),
+      );
+    } finally {
+      setIsPreparingCancellationPhotos(false);
+    }
+  };
+
+  const handleEndShift = () => {
+    if (isEnding) {
+      return;
+    }
+
+    setFinishShiftVisible(true);
+  };
+
+  const confirmEndShift = async () => {
+    try {
+      setFinishShiftVisible(false);
+
       await endShift();
     } catch {
       // handled by hook
@@ -325,8 +447,13 @@ export default function DriverHomeScreen() {
         return;
       }
 
+      const compressedUri = await compressOrderImage(
+        asset.uri,
+        type === "pickup" ? "pickup" : "delivery",
+      );
+
       const photo: OrderPhotoInput = {
-        uri: asset.uri,
+        uri: compressedUri,
         time: new Date(),
       };
 
@@ -453,6 +580,122 @@ export default function DriverHomeScreen() {
 
   const isArabic = language === "ar";
 
+  const removeCancellationPhoto = (index: number) => {
+    setCancellationPhotos((current) =>
+      current.filter((_, photoIndex) => photoIndex !== index),
+    );
+  };
+
+  const openCancelOrder = () => {
+    if (!activeOrder) {
+      return;
+    }
+
+    setCancellationReason(null);
+
+    setCancellationNotes("");
+
+    setCancellationPhotos([]);
+
+    setCancelOrderVisible(true);
+  };
+
+  const closeCancelOrder = () => {
+    if (isCancellingOrder) {
+      return;
+    }
+
+    setCancelOrderVisible(false);
+  };
+
+  const handleCancelOrder = async () => {
+    if (!activeOrder?._id) {
+      return;
+    }
+
+    if (!cancellationReason) {
+      setOrderError(
+        t("orders.cancelReasonRequired", "Select a cancellation reason"),
+      );
+
+      return;
+    }
+
+    if (cancellationReason === "other" && !cancellationNotes.trim()) {
+      setOrderError(
+        t(
+          "orders.cancelNotesRequired",
+          "Please explain the cancellation reason",
+        ),
+      );
+
+      return;
+    }
+
+    if (cancellationPhotos.length === 0) {
+      setOrderError(
+        t("orders.cancelPhotoRequired", "Add at least one cancellation photo"),
+      );
+
+      return;
+    }
+
+    try {
+      setIsCancellingOrder(true);
+
+      setOrderError(null);
+
+      const response = await cancelOrder({
+        orderId: activeOrder._id,
+
+        cancellationReason,
+
+        cancellationNotes: cancellationNotes.trim() || undefined,
+
+        cancellationPhotos,
+
+        cancelledAt: new Date(),
+      });
+
+      const cancelledOrder = response.order;
+
+      setOrders((current) => [
+        cancelledOrder,
+
+        ...current.filter((order) => order._id !== cancelledOrder._id),
+      ]);
+
+      setActiveOrder(null);
+
+      setPickupPhoto(null);
+
+      setDeliveryPhoto(null);
+
+      setOrderNotes("");
+
+      setOrderElapsedSeconds(0);
+
+      setNotesExpanded(false);
+
+      setCancellationReason(null);
+
+      setCancellationNotes("");
+
+      setCancellationPhotos([]);
+
+      setCancelOrderVisible(false);
+    } catch (error) {
+      setOrderError(
+        getErrorMessage(
+          error,
+          t("orders.cancelFailed", "Unable to cancel order"),
+        ),
+      );
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  };
+
   return (
     <AppScreen>
       <View style={styles.root}>
@@ -505,6 +748,7 @@ export default function DriverHomeScreen() {
                 error={orderError}
                 onPickup={() => void takeOrderPhoto("pickup")}
                 onDelivery={() => void takeOrderPhoto("delivery")}
+                onCancelOrder={openCancelOrder}
               />
 
               <ShiftControl
@@ -543,13 +787,31 @@ export default function DriverHomeScreen() {
           {tab === "stats" && <StatsPanel stats={stats} />}
         </ScrollView>
       </View>
+      <FinishShiftModal
+        visible={finishShiftVisible}
+        timer={timer}
+        isEnding={isEnding}
+        onContinue={() => setFinishShiftVisible(false)}
+        onFinish={() => void confirmEndShift()}
+      />
+
+      <CancelOrderModal
+        visible={cancelOrderVisible}
+        reason={cancellationReason}
+        notes={cancellationNotes}
+        photos={cancellationPhotos}
+        isCancelling={isCancellingOrder}
+        isPreparingPhotos={isPreparingCancellationPhotos}
+        onReasonChange={setCancellationReason}
+        onNotesChange={setCancellationNotes}
+        onAddPhotos={() => void pickCancellationPhotos()}
+        onRemovePhoto={removeCancellationPhoto}
+        onClose={closeCancelOrder}
+        onConfirm={() => void handleCancelOrder()}
+      />
     </AppScreen>
   );
 }
-
-/*
- * FILTER HELPERS
- */
 
 function filterByDate<T>(
   items: T[],
@@ -682,8 +944,10 @@ function InlineOrderCreator({
   error,
   onPickup,
   onDelivery,
+  onCancelOrder,
 }: {
   activeOrder: Order | null;
+  onCancelOrder: () => void;
 
   pickupPhoto: OrderPhotoInput | null;
 
@@ -734,16 +998,34 @@ function InlineOrderCreator({
           </Text>
         </View>
 
-        <Pressable
-          onPress={() => setNotesExpanded(!notesExpanded)}
-          style={({ pressed }) => [
-            styles.noteButton,
+        <View style={styles.orderHeaderActions}>
+          <Pressable
+            onPress={() => setNotesExpanded(!notesExpanded)}
+            style={({ pressed }) => [
+              styles.noteButton,
 
-            pressed && styles.buttonPressed,
-          ]}
-        >
-          <Pencil size={15} color={COLORS.primary} />
-        </Pressable>
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Pencil size={15} color={COLORS.primary} />
+          </Pressable>
+
+          {activeOrder && (
+            <Pressable
+              onPress={onCancelOrder}
+              disabled={isBusy}
+              style={({ pressed }) => [
+                styles.orderMenuButton,
+
+                pressed && !isBusy && styles.buttonPressed,
+
+                isBusy && styles.compactPhotoDisabled,
+              ]}
+            >
+              <MoreVertical size={17} color={COLORS.primary} />
+            </Pressable>
+          )}
+        </View>
       </View>
 
       <View style={styles.inlinePhotoRow}>
@@ -938,6 +1220,330 @@ function ShiftControl({
         </>
       )}
     </Pressable>
+  );
+}
+
+function FinishShiftModal({
+  visible,
+  timer,
+  isEnding,
+  onContinue,
+  onFinish,
+}: {
+  visible: boolean;
+  timer: string;
+  isEnding: boolean;
+  onContinue: () => void;
+  onFinish: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onContinue}
+    >
+      <Pressable style={styles.finishShiftOverlay} onPress={onContinue}>
+        <Pressable style={styles.finishShiftModal} onPress={() => {}}>
+          <View style={styles.finishShiftIcon}>
+            <Text style={styles.finishShiftIconText}>✓</Text>
+          </View>
+
+          <Text style={styles.finishShiftTitle}>
+            {t("shifts.finishTitle", "Finish your shift?")}
+          </Text>
+
+          <Text style={styles.finishShiftDescription}>
+            {t(
+              "shifts.finishDescription",
+              "You've done enough for today. Finish your shift and get some rest?",
+            )}
+          </Text>
+
+          <View style={styles.finishShiftTime}>
+            <Text style={styles.finishShiftTimeLabel}>
+              {t("shifts.timeWorked", "Time worked")}
+            </Text>
+
+            <Text style={styles.finishShiftTimeValue}>{timer}</Text>
+          </View>
+
+          <Pressable
+            onPress={onFinish}
+            disabled={isEnding}
+            style={({ pressed }) => [
+              styles.finishShiftButton,
+              pressed && styles.finishShiftButtonPressed,
+              isEnding && styles.disabledButton,
+            ]}
+          >
+            {isEnding ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.finishShiftButtonText}>
+                {t("shifts.getSomeRest", "Get Some Rest")}
+              </Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={onContinue}
+            disabled={isEnding}
+            style={({ pressed }) => [
+              styles.continueShiftButton,
+              pressed && styles.continueShiftButtonPressed,
+            ]}
+          >
+            <Text style={styles.continueShiftText}>
+              {t("shifts.continueWorking", "Continue Working")}
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function CancelOrderModal({
+  visible,
+  reason,
+  notes,
+  photos,
+  isCancelling,
+  isPreparingPhotos,
+  onReasonChange,
+  onNotesChange,
+  onAddPhotos,
+  onRemovePhoto,
+  onClose,
+  onConfirm,
+}: {
+  visible: boolean;
+
+  reason: OrderCancellationReason | null;
+
+  notes: string;
+
+  photos: OrderPhotoInput[];
+
+  isCancelling: boolean;
+
+  isPreparingPhotos: boolean;
+
+  onReasonChange: (reason: OrderCancellationReason) => void;
+
+  onNotesChange: (value: string) => void;
+
+  onAddPhotos: () => void;
+
+  onRemovePhoto: (index: number) => void;
+
+  onClose: () => void;
+
+  onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+
+  const reasons: {
+    value: OrderCancellationReason;
+    label: string;
+  }[] = [
+    {
+      value: "customer_unavailable",
+      label: t("orders.cancelCustomerUnavailable", "Customer unavailable"),
+    },
+    {
+      value: "wrong_address",
+      label: t("orders.cancelWrongAddress", "Wrong address"),
+    },
+    {
+      value: "vehicle_issue",
+      label: t("orders.cancelVehicleIssue", "Vehicle issue"),
+    },
+    {
+      value: "order_issue",
+      label: t("orders.cancelOrderIssue", "Order issue"),
+    },
+    {
+      value: "emergency",
+      label: t("orders.cancelEmergency", "Emergency"),
+    },
+    {
+      value: "other",
+      label: t("orders.cancelOther", "Other"),
+    },
+  ];
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.cancelOverlay}>
+        <View style={styles.cancelModal}>
+          <View style={styles.cancelHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cancelTitle}>
+                {t("orders.cancelOrder", "Cancel Order")}
+              </Text>
+
+              <Text style={styles.cancelSubtitle}>
+                {t(
+                  "orders.cancelDescription",
+                  "Select a reason and add photo evidence.",
+                )}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={onClose}
+              disabled={isCancelling}
+              style={styles.cancelClose}
+            >
+              <X size={17} color={COLORS.primary} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.cancelSectionLabel}>
+              {t("orders.cancelReason", "Reason")}
+            </Text>
+
+            <View style={styles.reasonList}>
+              {reasons.map((item) => {
+                const selected = reason === item.value;
+
+                return (
+                  <Pressable
+                    key={item.value}
+                    onPress={() => onReasonChange(item.value)}
+                    style={[
+                      styles.reasonChip,
+
+                      selected && styles.reasonChipSelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.reasonChipText,
+
+                        selected && styles.reasonChipTextSelected,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={styles.cancelSectionLabel}>
+              {t("orders.cancelNotes", "Details")}
+            </Text>
+
+            <TextInput
+              value={notes}
+              onChangeText={onNotesChange}
+              placeholder={t(
+                "orders.cancelNotesPlaceholder",
+                "Explain what happened",
+              )}
+              placeholderTextColor={COLORS.muted}
+              multiline
+              maxLength={1000}
+              style={styles.cancelNotesInput}
+            />
+
+            <View style={styles.cancelPhotoHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cancelSectionLabel}>
+                  {t("orders.cancelPhotos", "Photo Evidence")}
+                </Text>
+
+                <Text style={styles.cancelPhotoHint}>
+                  {t(
+                    "orders.cancelPhotoRequiredHint",
+                    "At least one image is required",
+                  )}
+                </Text>
+              </View>
+
+              <Text style={styles.cancelPhotoCount}>{photos.length}/5</Text>
+            </View>
+
+            <View style={styles.cancelPhotos}>
+              {photos.map((photo, index) => (
+                <View
+                  key={`${photo.uri}-${index}`}
+                  style={styles.cancelPhotoItem}
+                >
+                  <Image
+                    source={{
+                      uri: photo.uri,
+                    }}
+                    style={styles.cancelPhotoImage}
+                  />
+
+                  <Pressable
+                    onPress={() => onRemovePhoto(index)}
+                    style={styles.removeCancelPhoto}
+                  >
+                    <Trash2 size={12} color={COLORS.white} />
+                  </Pressable>
+                </View>
+              ))}
+
+              {photos.length < 5 && (
+                <Pressable
+                  onPress={onAddPhotos}
+                  disabled={isPreparingPhotos}
+                  style={styles.addCancelPhoto}
+                >
+                  {isPreparingPhotos ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <>
+                      <ImagePlus size={19} color={COLORS.primary} />
+
+                      <Text style={styles.addCancelPhotoText}>
+                        {t("orders.addPhotos", "Add")}
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
+            </View>
+          </ScrollView>
+
+          <Pressable
+            onPress={onConfirm}
+            disabled={isCancelling || isPreparingPhotos}
+            style={({ pressed }) => [
+              styles.confirmCancelButton,
+
+              pressed && styles.confirmCancelPressed,
+
+              (isCancelling || isPreparingPhotos) && styles.disabledButton,
+            ]}
+          >
+            {isCancelling ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.confirmCancelText}>
+                {t("orders.confirmCancel", "Cancel Order")}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2268,5 +2874,406 @@ const styles = StyleSheet.create({
 
   buttonPressed: {
     opacity: 0.75,
+  },
+
+  finishShiftOverlay: {
+    flex: 1,
+
+    paddingHorizontal: 20,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    backgroundColor: "rgba(10, 9, 12, 0.5)",
+  },
+
+  finishShiftModal: {
+    width: "100%",
+    maxWidth: 380,
+
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 16,
+
+    alignItems: "center",
+
+    borderRadius: 18,
+
+    backgroundColor: COLORS.white,
+  },
+
+  finishShiftIcon: {
+    width: 46,
+    height: 46,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 23,
+
+    backgroundColor: COLORS.successLight,
+  },
+
+  finishShiftIconText: {
+    fontSize: 20,
+    fontWeight: "900",
+
+    color: COLORS.success,
+  },
+
+  finishShiftTitle: {
+    marginTop: 12,
+
+    fontSize: 17,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+
+    textAlign: "center",
+  },
+
+  finishShiftDescription: {
+    marginTop: 6,
+
+    paddingHorizontal: 8,
+
+    fontSize: 10,
+    lineHeight: 15,
+
+    color: COLORS.muted,
+
+    textAlign: "center",
+  },
+
+  finishShiftTime: {
+    width: "100%",
+
+    marginTop: 14,
+
+    paddingVertical: 10,
+
+    alignItems: "center",
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.light,
+  },
+
+  finishShiftTimeLabel: {
+    fontSize: 8,
+    fontWeight: "700",
+
+    color: COLORS.muted,
+  },
+
+  finishShiftTimeValue: {
+    marginTop: 2,
+
+    fontSize: 18,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  finishShiftButton: {
+    width: "100%",
+    height: 42,
+
+    marginTop: 14,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.primary,
+  },
+
+  finishShiftButtonPressed: {
+    opacity: 0.82,
+  },
+
+  finishShiftButtonText: {
+    fontSize: 11,
+    fontWeight: "900",
+
+    color: COLORS.white,
+  },
+
+  continueShiftButton: {
+    height: 38,
+
+    marginTop: 5,
+
+    paddingHorizontal: 20,
+
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  continueShiftButtonPressed: {
+    opacity: 0.6,
+  },
+
+  continueShiftText: {
+    fontSize: 10,
+    fontWeight: "800",
+
+    color: COLORS.secondary,
+  },
+  orderHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  orderMenuButton: {
+    width: 32,
+    height: 32,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
+  },
+  cancelOverlay: {
+    flex: 1,
+
+    paddingHorizontal: 16,
+    paddingVertical: 30,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    backgroundColor: "rgba(10,9,12,0.52)",
+  },
+
+  cancelModal: {
+    width: "100%",
+    maxWidth: 430,
+    maxHeight: "88%",
+
+    padding: 14,
+
+    borderRadius: 16,
+
+    backgroundColor: COLORS.white,
+  },
+
+  cancelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+
+    marginBottom: 12,
+  },
+
+  cancelTitle: {
+    fontSize: 15,
+    fontWeight: "900",
+
+    color: COLORS.error,
+  },
+
+  cancelSubtitle: {
+    marginTop: 2,
+
+    fontSize: 9,
+    lineHeight: 13,
+
+    color: COLORS.muted,
+  },
+
+  cancelClose: {
+    width: 31,
+    height: 31,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
+  },
+
+  cancelSectionLabel: {
+    marginBottom: 6,
+
+    fontSize: 10,
+    fontWeight: "900",
+
+    color: COLORS.primary,
+  },
+
+  reasonList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+
+    gap: 6,
+
+    marginBottom: 13,
+  },
+
+  reasonChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 999,
+
+    backgroundColor: COLORS.light,
+  },
+
+  reasonChipSelected: {
+    borderColor: COLORS.primary,
+
+    backgroundColor: COLORS.primary,
+  },
+
+  reasonChipText: {
+    fontSize: 8,
+    fontWeight: "800",
+
+    color: COLORS.primary,
+  },
+
+  reasonChipTextSelected: {
+    color: COLORS.white,
+  },
+
+  cancelNotesInput: {
+    minHeight: 75,
+
+    marginBottom: 13,
+
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.light,
+
+    fontSize: 10,
+
+    color: COLORS.black,
+
+    textAlignVertical: "top",
+  },
+
+  cancelPhotoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+
+    marginBottom: 7,
+  },
+
+  cancelPhotoHint: {
+    marginTop: -3,
+
+    fontSize: 8,
+
+    color: COLORS.muted,
+  },
+
+  cancelPhotoCount: {
+    fontSize: 9,
+    fontWeight: "800",
+
+    color: COLORS.secondary,
+  },
+
+  cancelPhotos: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+
+    gap: 7,
+  },
+
+  cancelPhotoItem: {
+    width: 66,
+    height: 66,
+
+    borderRadius: 9,
+
+    overflow: "hidden",
+
+    backgroundColor: COLORS.light,
+  },
+
+  cancelPhotoImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  removeCancelPhoto: {
+    position: "absolute",
+
+    top: 4,
+    right: 4,
+
+    width: 22,
+    height: 22,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 11,
+
+    backgroundColor: "rgba(185,28,28,0.9)",
+  },
+
+  addCancelPhoto: {
+    width: 66,
+    height: 66,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: COLORS.secondary,
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
+  },
+
+  addCancelPhotoText: {
+    marginTop: 3,
+
+    fontSize: 8,
+    fontWeight: "800",
+
+    color: COLORS.primary,
+  },
+
+  confirmCancelButton: {
+    height: 42,
+
+    marginTop: 15,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.error,
+  },
+
+  confirmCancelPressed: {
+    opacity: 0.8,
+  },
+
+  confirmCancelText: {
+    fontSize: 10,
+    fontWeight: "900",
+
+    color: COLORS.white,
   },
 });

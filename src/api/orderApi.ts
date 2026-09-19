@@ -1,6 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import {
   type ActiveOrderResponse,
+  type CancelOrderPayload,
   type CompleteOrderDeliveryPayload,
   type CreatePickupOrderPayload,
   type DeleteOrderResponse,
@@ -138,6 +139,50 @@ export async function completeOrderDelivery(
   }
 
   return data;
+}
+
+export async function cancelOrder(params: CancelOrderPayload) {
+  const formData = new FormData();
+
+  formData.append("cancellationReason", params.cancellationReason);
+
+  if (params.cancellationNotes?.trim()) {
+    formData.append("cancellationNotes", params.cancellationNotes.trim());
+  }
+
+  formData.append(
+    "cancelledAt",
+    (params.cancelledAt ?? new Date()).toISOString(),
+  );
+
+  for (
+    let index = 0;
+    index < (params.cancellationPhotos?.length ?? 0);
+    index += 1
+  ) {
+    const photo = params.cancellationPhotos?.[index];
+
+    if (!photo?.uri) {
+      continue;
+    }
+
+    formData.append(
+      "cancellationPhotos",
+      getFileFromUri(photo.uri, `cancellation-${index + 1}`),
+    );
+  }
+
+  const response = await api.patch<OrderResponse>(
+    `/orders/${params.orderId}/cancel`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    },
+  );
+
+  return response.data;
 }
 
 export async function getActiveOrder() {

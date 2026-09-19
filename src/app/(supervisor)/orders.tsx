@@ -16,7 +16,6 @@ import { useTranslation } from "react-i18next";
 import { AppScreen } from "../../components/AppScreen";
 
 import { getSupervisorActiveOrders } from "../../api/orderApi";
-
 import { getErrorMessage } from "../../utils";
 
 import type { Order } from "../../types/order";
