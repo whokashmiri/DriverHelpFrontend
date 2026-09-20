@@ -32,6 +32,7 @@ export interface OrderRider {
 
 export interface Order {
   _id: string;
+  orderId: number | null;
 
   rider: string | OrderRider;
 

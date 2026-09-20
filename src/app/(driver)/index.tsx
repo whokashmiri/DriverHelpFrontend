@@ -996,7 +996,10 @@ function InlineOrderCreator({
         >
           <Text style={styles.inlineOrderTitle}>
             {activeOrder
-              ? t("driver.activeDelivery", "Active Delivery")
+              ? `${t(
+                  "driver.activeDelivery",
+                  "Active Delivery",
+                )}${activeOrder.orderId ? ` #${activeOrder.orderId}` : ""}`
               : t("driver.newOrder", "New Order")}
           </Text>
 
@@ -1806,7 +1809,10 @@ function ActiveOrderHistoryRow({
 
       <View style={styles.historyInfo}>
         <Text style={styles.historyOrderTitle}>
-          {t("driver.activeDelivery", "Active Delivery")}
+          {`${t(
+            "driver.activeDelivery",
+            "Active Delivery",
+          )}${order.orderId ? ` #${order.orderId}` : ""}`}
         </Text>
 
         <Text style={styles.historyOrderMeta}>
@@ -1877,8 +1883,14 @@ function CompletedOrderRow({
         <View style={styles.historyInfo}>
           <Text style={styles.historyOrderTitle}>
             {isCancelled
-              ? t("orders.cancelledOrder", "Cancelled Order")
-              : t("driver.delivery", "Delivery")}
+              ? `${t(
+                  "orders.cancelledOrder",
+                  "Cancelled Order",
+                )}${order.orderId ? ` #${order.orderId}` : ""}`
+              : `${t(
+                  "driver.delivery",
+                  "Delivery",
+                )}${order.orderId ? ` #${order.orderId}` : ""}`}
           </Text>
 
           <Text style={styles.historyOrderMeta}>
@@ -1912,6 +1924,16 @@ function CompletedOrderRow({
               {formatDateTime(order.pickupTime, language)}
             </Text>
           </View>
+
+          {!!order.orderId && (
+            <View style={styles.expandedLine}>
+              <Text style={styles.expandedLabel}>
+                {t("orders.orderId", "Order ID")}
+              </Text>
+
+              <Text style={styles.expandedValue}>#{order.orderId}</Text>
+            </View>
+          )}
 
           <View style={styles.expandedLine}>
             <Text style={styles.expandedLabel}>
