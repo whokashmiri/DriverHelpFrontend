@@ -495,6 +495,10 @@ function FilteredStatsCard({
           label={t("stats.delivered", "Delivered")}
           value={String(stats.orders.delivered)}
         />
+        <FilteredMetric
+          label={t("stats.cancelled", "Cancelled")}
+          value={String(stats.orders.cancelled)}
+        />
 
         <FilteredMetric
           label={t("stats.activeOrders", "Active")}
@@ -696,16 +700,26 @@ function PeriodCard({
           label={t("stats.delivered", "Delivered")}
           value={String(data.orders.delivered)}
         />
+
+             <MetricCard
+          label={t("stats.cancelled", "Cancelled")}
+          value={String(data.orders.cancelled)}
+        />
       </View>
 
       <View style={styles.workBox}>
+      
         <Text style={styles.workLabel}>
           {t("stats.workingTime", "Working Time")}
         </Text>
 
+      
+
         <Text style={styles.workValue}>
           {formatDuration(data.work.totalSeconds, language)}
         </Text>
+
+       
       </View>
     </View>
   );
@@ -1038,7 +1052,7 @@ const styles = StyleSheet.create({
 
   dateRow: {
     flexDirection: "row",
-
+    flexWrap: "wrap",
     gap: 7,
   },
 
@@ -1184,6 +1198,7 @@ const styles = StyleSheet.create({
 
   filteredGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
 
     gap: 6,
   },
@@ -1336,7 +1351,7 @@ const styles = StyleSheet.create({
 
   metricCard: {
     flex: 1,
-
+    width: "31%",
     minHeight: 58,
 
     paddingHorizontal: 10,

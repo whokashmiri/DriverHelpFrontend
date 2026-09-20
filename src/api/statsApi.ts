@@ -43,26 +43,6 @@ export async function getSupervisorDashboardStats() {
   return response.data;
 }
 
-/**
- * SUPERVISOR
- *
- * Get statistics for a custom date range.
- *
- * Whole team:
- *
- * getSupervisorRangeStats(
- *   "2026-09-01",
- *   "2026-09-17",
- * );
- *
- * One driver:
- *
- * getSupervisorRangeStats(
- *   "2026-09-01",
- *   "2026-09-17",
- *   driverId,
- * );
- */
 export async function getSupervisorRangeStats(
   from: string,
   to: string,

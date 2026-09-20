@@ -51,7 +51,11 @@ export default function SupervisorOrdersScreen() {
 
       const response = await getSupervisorActiveOrders();
 
-      setOrders(response.orders ?? []);
+      const activeOrders = (response.orders ?? []).filter(
+        (order) => order.status === "picked_up",
+      );
+
+      setOrders(activeOrders);
     } catch (err) {
       setError(
         getErrorMessage(
@@ -148,88 +152,90 @@ export default function SupervisorOrdersScreen() {
           </View>
         ) : (
           <View style={styles.list}>
-            {orders.map((order) => {
-              const rider =
-                typeof order.rider === "string" ? null : order.rider;
+            {orders
+              .filter((order) => order.status === "picked_up")
+              .map((order) => {
+                const rider =
+                  typeof order.rider === "string" ? null : order.rider;
 
-              return (
-                <Pressable
-                  key={order._id}
-                  onPress={() => {
-                    if (!rider?._id) {
-                      return;
-                    }
+                return (
+                  <Pressable
+                    key={order._id}
+                    onPress={() => {
+                      if (!rider?._id) {
+                        return;
+                      }
 
-                    router.push({
-                      pathname: "/(supervisor)/driver-details",
+                      router.push({
+                        pathname: "/(supervisor)/driver-details",
 
-                      params: {
-                        driverId: rider._id,
-                      },
-                    });
-                  }}
-                  style={({ pressed }) => [
-                    styles.orderCard,
-                    pressed && styles.orderCardPressed,
-                  ]}
-                >
-                  {order.pickupPhoto?.url ? (
-                    <Image
-                      source={{
-                        uri: order.pickupPhoto.url,
-                      }}
-                      style={styles.orderImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.orderImagePlaceholder}>
-                      <Text style={styles.orderImageText}>O</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.orderInfo}>
-                    <View style={styles.orderTopRow}>
-                      <Text style={styles.driverName} numberOfLines={1}>
-                        {rider?.name ?? t("drivers.driver", "Driver")}
-                      </Text>
-
-                      <View style={styles.activeBadge}>
-                        <View style={styles.activeDot} />
-
-                        <Text style={styles.activeText}>
-                          {t("orders.active", "Active")}
-                        </Text>
+                        params: {
+                          driverId: rider._id,
+                        },
+                      });
+                    }}
+                    style={({ pressed }) => [
+                      styles.orderCard,
+                      pressed && styles.orderCardPressed,
+                    ]}
+                  >
+                    {order.pickupPhoto?.url ? (
+                      <Image
+                        source={{
+                          uri: order.pickupPhoto.url,
+                        }}
+                        style={styles.orderImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.orderImagePlaceholder}>
+                        <Text style={styles.orderImageText}>O</Text>
                       </View>
+                    )}
+
+                    <View style={styles.orderInfo}>
+                      <View style={styles.orderTopRow}>
+                        <Text style={styles.driverName} numberOfLines={1}>
+                          {rider?.name ?? t("drivers.driver", "Driver")}
+                        </Text>
+
+                        <View style={styles.activeBadge}>
+                          <View style={styles.activeDot} />
+
+                          <Text style={styles.activeText}>
+                            {t("orders.active", "Active")}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {!!rider?.iqamaId && (
+                        <Text style={styles.driverSub} numberOfLines={1}>
+                          {t("profile.iqama", "Iqama")}: {rider.iqamaId}
+                        </Text>
+                      )}
+
+                      {!!rider?.name && (
+                        <Text style={styles.driverPhone} numberOfLines={1}>
+                          {rider.name}
+                        </Text>
+                      )}
+
+                      <Text style={styles.pickupTime}>
+                        {t("orders.pickupTime", "Pickup")}:{" "}
+                        {formatOrderTime(order.pickupTime)}
+                      </Text>
+
+                      {!!order.notes?.trim() && (
+                        <Text style={styles.notes} numberOfLines={2}>
+                          {order.notes}
+                        </Text>
+                      )}
                     </View>
 
-                    {!!rider?.iqamaId && (
-                      <Text style={styles.driverSub} numberOfLines={1}>
-                        {t("profile.iqama", "Iqama")}: {rider.iqamaId}
-                      </Text>
-                    )}
-
-                    {!!rider?.name && (
-                      <Text style={styles.driverPhone} numberOfLines={1}>
-                        {rider.name}
-                      </Text>
-                    )}
-
-                    <Text style={styles.pickupTime}>
-                      {t("orders.pickupTime", "Pickup")}:{" "}
-                      {formatOrderTime(order.pickupTime)}
-                    </Text>
-
-                    {!!order.notes?.trim() && (
-                      <Text style={styles.notes} numberOfLines={2}>
-                        {order.notes}
-                      </Text>
-                    )}
-                  </View>
-
-                  <Text style={styles.chevron}>›</Text>
-                </Pressable>
-              );
-            })}
+                    <Text style={styles.chevron}>›</Text>
+                  </Pressable>
+                );
+              })}
           </View>
         )}
       </ScrollView>

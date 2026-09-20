@@ -4,6 +4,7 @@ export interface OrderStats {
   total: number;
   pickedUp: number;
   delivered: number;
+  cancelled: number;
 }
 
 export interface ActiveShiftSummary {
