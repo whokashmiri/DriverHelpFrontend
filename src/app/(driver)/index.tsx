@@ -82,6 +82,8 @@ type DriverTabName = "home" | "orders" | "shifts" | "stats";
 
 type DateFilter = "today" | "7days" | "30days" | "all";
 
+type OrderStatusFilter = "all" | "delivered" | "cancelled";
+
 export default function DriverHomeScreen() {
   const { t } = useTranslation();
 
@@ -101,6 +103,9 @@ export default function DriverHomeScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
 
   const [shifts, setShifts] = useState<DriverShift[]>([]);
+
+  const [orderStatusFilter, setOrderStatusFilter] =
+    useState<OrderStatusFilter>("all");
 
   const [stats, setStats] = useState<MyDashboardStatsResponse | null>(null);
 
@@ -772,6 +777,8 @@ export default function DriverHomeScreen() {
               isLoading={isLoadingOrder}
               filter={orderFilter}
               setFilter={setOrderFilter}
+              statusFilter={orderStatusFilter}
+              setStatusFilter={setOrderStatusFilter}
             />
           )}
 
@@ -1597,6 +1604,73 @@ function RecentOrders({
   );
 }
 
+function OrderStatusFilterBar({
+  value,
+  onChange,
+}: {
+  value: OrderStatusFilter;
+
+  onChange: (value: OrderStatusFilter) => void;
+}) {
+  const { t } = useTranslation();
+
+  const options: {
+    key: OrderStatusFilter;
+    label: string;
+  }[] = [
+    {
+      key: "all",
+      label: t("filters.all", "All"),
+    },
+
+    {
+      key: "delivered",
+      label: t("orders.delivered", "Delivered"),
+    },
+
+    {
+      key: "cancelled",
+      label: t("orders.cancelled", "Cancelled"),
+    },
+  ];
+
+  return (
+    <View style={styles.orderStatusFilters}>
+      {options.map((option) => {
+        const active = value === option.key;
+
+        return (
+          <Pressable
+            key={option.key}
+            onPress={() => onChange(option.key)}
+            style={({ pressed }) => [
+              styles.orderStatusFilterButton,
+
+              active && styles.orderStatusFilterButtonActive,
+
+              option.key === "cancelled" &&
+                active &&
+                styles.orderStatusFilterCancelledActive,
+
+              pressed && styles.dateFilterButtonPressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.orderStatusFilterText,
+
+                active && styles.orderStatusFilterTextActive,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function OrdersPanel({
   orders,
   activeOrder,
@@ -1606,6 +1680,8 @@ function OrdersPanel({
   isLoading,
   filter,
   setFilter,
+  statusFilter,
+  setStatusFilter,
 }: {
   orders: Order[];
 
@@ -1622,16 +1698,28 @@ function OrdersPanel({
   filter: DateFilter;
 
   setFilter: (value: DateFilter) => void;
+
+  statusFilter: OrderStatusFilter;
+
+  setStatusFilter: (value: OrderStatusFilter) => void;
 }) {
   const { t } = useTranslation();
 
-  const filteredOrders = filterByDate(
+  const dateFilteredOrders = filterByDate(
     orders,
 
     (order) => order.pickupTime || order.createdAt,
 
     filter,
   );
+
+  const filteredOrders = dateFilteredOrders.filter((order) => {
+    if (statusFilter === "all") {
+      return true;
+    }
+
+    return order.status === statusFilter;
+  });
 
   if (isLoading) {
     return (
@@ -1650,6 +1738,7 @@ function OrdersPanel({
       </View>
 
       <DateFilterBar value={filter} onChange={setFilter} />
+      <OrderStatusFilterBar value={statusFilter} onChange={setStatusFilter} />
 
       {filteredOrders.length === 0 ? (
         <Text style={styles.emptyText}>
@@ -1749,6 +1838,7 @@ function CompletedOrderRow({
   onToggle: () => void;
 }) {
   const { t } = useTranslation();
+  const isCancelled = order.status === "cancelled";
 
   return (
     <View style={styles.completedOrderCard}>
@@ -1786,7 +1876,9 @@ function CompletedOrderRow({
 
         <View style={styles.historyInfo}>
           <Text style={styles.historyOrderTitle}>
-            {t("driver.delivery", "Delivery")}
+            {isCancelled
+              ? t("orders.cancelledOrder", "Cancelled Order")
+              : t("driver.delivery", "Delivery")}
           </Text>
 
           <Text style={styles.historyOrderMeta}>
@@ -1796,8 +1888,16 @@ function CompletedOrderRow({
           </Text>
         </View>
 
-        <View style={styles.doneBadge}>
-          <Text style={styles.doneBadgeText}>{t("driver.done", "Done")}</Text>
+        <View style={[isCancelled ? styles.cancelledBadge : styles.doneBadge]}>
+          <Text
+            style={[
+              isCancelled ? styles.cancelledBadgeText : styles.doneBadgeText,
+            ]}
+          >
+            {isCancelled
+              ? t("orders.cancelled", "Cancelled")
+              : t("orders.delivered", "Delivered")}
+          </Text>
         </View>
       </Pressable>
 
@@ -3275,5 +3375,68 @@ const styles = StyleSheet.create({
     fontWeight: "900",
 
     color: COLORS.white,
+  },
+
+  orderStatusFilters: {
+    flexDirection: "row",
+
+    gap: 6,
+
+    marginBottom: 10,
+  },
+
+  orderStatusFilterButton: {
+    flex: 1,
+
+    height: 30,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderWidth: 1,
+    borderColor: COLORS.border,
+
+    borderRadius: 8,
+
+    backgroundColor: COLORS.white,
+  },
+
+  orderStatusFilterButtonActive: {
+    borderColor: COLORS.primary,
+
+    backgroundColor: COLORS.primary,
+  },
+
+  orderStatusFilterCancelledActive: {
+    borderColor: COLORS.error,
+
+    backgroundColor: COLORS.error,
+  },
+
+  orderStatusFilterText: {
+    fontSize: 8,
+    fontWeight: "800",
+
+    color: COLORS.muted,
+  },
+
+  orderStatusFilterTextActive: {
+    color: COLORS.white,
+  },
+
+  cancelledBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+
+    borderRadius: 999,
+
+    backgroundColor: COLORS.errorBackground,
+  },
+
+  cancelledBadgeText: {
+    fontSize: 8,
+    fontWeight: "900",
+
+    color: COLORS.error,
   },
 });
