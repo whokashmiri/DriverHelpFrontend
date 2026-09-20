@@ -165,7 +165,22 @@
     "photoSaving": "جارٍ الحفظ...",
     "photoSaved": "تم الحفظ",
     "photoLocked": "مقفل",
-    "takePhoto": "التقاط صورة"
+    "takePhoto": "التقاط صورة",
+    "cancelOrder": "إلغاء الطلب",
+    "cancelDescription": "اختر سببًا وأضف دليلًا بالصور.",
+    "cancelReason": "السبب",
+    "cancelNotes": "التفاصيل",
+    "cancelNotesPlaceholder": "اشرح ما حدث",
+    "cancelPhotos": "دليل بالصور",
+    "cancelPhotoRequiredHint": "مطلوب صورة واحدة على الأقل",
+    "addPhotos": "إضافة",
+    "confirmCancel": "تأكيد إلغاء الطلب",
+    "cancelCustomerUnavailable": "العميل غير متوفر",
+    "cancelWrongAddress": "عنوان غير صحيح",
+    "cancelVehicleIssue": "مشكلة في المركبة",
+    "cancelOrderIssue": "مشكلة في الطلب",
+    "cancelEmergency": "حالة طارئة",
+    "cancelOther": "أخرى"
   },
 
   "shifts": {

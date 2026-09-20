@@ -162,7 +162,22 @@
     "photoSaving": "Saving...",
     "photoSaved": "Saved",
     "photoLocked": "Locked",
-    "takePhoto": "Take photo"
+    "takePhoto": "Take photo",
+     "cancelOrder":"Cancel Order",
+     "cancelDescription":"Select a reason and add photo evidence." ,
+     "cancelReason":"Reason",
+     "cancelNotes": "Details",
+     "cancelNotesPlaceholder":"Explain what happened",
+     "cancelPhotos":"Photo Evidence",
+     "cancelPhotoRequiredHint":"At least one image is required",
+     "addPhotos":"Add",
+     "confirmCancel":"Cancel Order",
+     "cancelCustomerUnavailable":"Customer unavailable",
+     "cancelWrongAddress": "Wrong address",
+     "cancelVehicleIssue": "Vehicle issue",
+     "cancelOrderIssue": "Order issue",
+     "cancelEmergency": "Emergency",
+     "cancelOther": "Other"
   },
 
   "shifts": {
