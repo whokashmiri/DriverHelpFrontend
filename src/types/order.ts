@@ -119,3 +119,56 @@ export interface DeleteOrderResponse {
 
   message: string;
 }
+
+
+export type SupervisorOrderStatusFilter =
+  | "all"
+  | "picked_up"
+  | "delivered"
+  | "cancelled";
+
+export interface SupervisorOrdersQuery {
+  page?: number;
+
+  limit?: number;
+
+  driverId?: string;
+
+  status?: SupervisorOrderStatusFilter;
+
+  from?: string;
+
+  to?: string;
+}
+
+export interface OrderPagination {
+  page: number;
+
+  limit: number;
+
+  total: number;
+
+  totalPages: number;
+
+  hasNextPage: boolean;
+
+  hasPreviousPage: boolean;
+}
+
+export interface SupervisorOrdersResponse {
+  success: boolean;
+
+  pagination: OrderPagination;
+
+  filters?: {
+    driverId?: string | null;
+
+    status?: string | null;
+
+    from?: string | null;
+
+    to?: string | null;
+  };
+
+  orders: Order[];
+}

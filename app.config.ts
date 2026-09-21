@@ -8,6 +8,7 @@ export default {
       ...(appJson.expo.plugins ?? []),
 
       "@maplibre/maplibre-react-native",
+      "@react-native-community/datetimepicker"
     ],
   },
 };
