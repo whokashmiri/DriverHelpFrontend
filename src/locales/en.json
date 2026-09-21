@@ -9,8 +9,10 @@
     "inactive": "Inactive",
 
     "viewAll": "View All Drivers",
+    "retry": "Retry",
 
-    "retry": "Retry"
+    "cancel":"Cancel",
+    "save":"Save"
   },
 
   "stats": {
@@ -119,8 +121,12 @@
     "delivery": "Delivery",
     "active": "Active",
     "done": "Done",
+    "noOrdersForPeriod": "No orders found for this period",
 
-    "noOrdersForPeriod": "No orders found for this period"
+    "deactivateConfirmTitle":"Deactivate Driver?",
+    "deactivateConfirmMessage":"Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
+    "deactivate":"Deactivate Driver",
+    "passwordOptional":"Leave empty to keep current password"
   },
 
   "orders": {
@@ -215,7 +221,9 @@
     "status": "Status",
     "phone": "Phone",
     "title": "Profile",
-    "supervisor": "Supervisor"
+    "supervisor": "Supervisor",
+
+    "password":"New Password"
   },
 
   "auth": {

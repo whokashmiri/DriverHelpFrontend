@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Modal,
   Pressable,
@@ -13,6 +14,8 @@ import {
 } from "react-native";
 
 import {
+  Eye,
+  EyeOff,
   MessageCircle,
   Pencil,
   Phone,
@@ -269,6 +272,48 @@ const handleUpdateDriver = async () => {
   }
 };
 
+
+const handleStatusPress = () => {
+  if (!driver) {
+    return;
+  }
+
+  if (!driver.isActive) {
+    void toggleStatus();
+    return;
+  }
+
+  Alert.alert(
+    t(
+      "drivers.deactivateConfirmTitle",
+      "Deactivate Driver?",
+    ),
+    t(
+      "drivers.deactivateConfirmMessage",
+      "Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
+    ),
+    [
+      {
+        text: t(
+          "common.cancel",
+          "Cancel",
+        ),
+        style: "cancel",
+      },
+      {
+        text: t(
+          "drivers.deactivate",
+          "Deactivate Driver",
+        ),
+        style: "destructive",
+        onPress: () => {
+          void toggleStatus();
+        },
+      },
+    ],
+  );
+};
+
   const toggleStatus = async () => {
     if (!driver || !driverId || isUpdatingStatus) {
       return;
@@ -486,29 +531,49 @@ const handleUpdateDriver = async () => {
               </View>
             )}
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.statusButton,
+         <Pressable
+  style={({ pressed }) => [
+    styles.statusButton,
 
-                driver.isActive ? styles.disableButton : styles.enableButton,
+    driver.isActive
+      ? styles.disableButton
+      : styles.enableButton,
 
-                pressed && styles.buttonPressed,
+    pressed &&
+      styles.buttonPressed,
 
-                isUpdatingStatus && styles.buttonDisabled,
-              ]}
-              disabled={isUpdatingStatus}
-              onPress={toggleStatus}
-            >
-              {isUpdatingStatus ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.buttonText}>
-                  {driver.isActive
-                    ? t("drivers.deactivate", "Deactivate Driver")
-                    : t("drivers.activate", "Activate Driver")}
-                </Text>
-              )}
-            </Pressable>
+    isUpdatingStatus &&
+      styles.buttonDisabled,
+  ]}
+  disabled={
+    isUpdatingStatus
+  }
+  onPress={
+    handleStatusPress
+  }
+>
+  {isUpdatingStatus ? (
+    <ActivityIndicator
+      color={COLORS.white}
+    />
+  ) : (
+    <Text
+      style={
+        styles.buttonText
+      }
+    >
+      {driver.isActive
+        ? t(
+            "drivers.deactivate",
+            "Deactivate Driver",
+          )
+        : t(
+            "drivers.activate",
+            "Activate Driver",
+          )}
+    </Text>
+  )}
+</Pressable>
           </>
         ) : null}
 
@@ -707,7 +772,7 @@ function EditDriverModal({
                 onPasswordChange
               }
               placeholder={t(
-                "drivers.passwordOptional",
+                "driver.passwordOptional",
                 "Leave empty to keep current password",
               )}
               secureTextEntry
@@ -807,47 +872,73 @@ function EditField({
 
   secureTextEntry?: boolean;
 }) {
+  const [passwordVisible, setPasswordVisible] =
+    useState(false);
+
+  const shouldShowToggle =
+    secureTextEntry;
+
+
+    
+
   return (
-    <View
-      style={
-        styles.editField
-      }
-    >
-      <Text
-        style={
-          styles.editFieldLabel
-        }
-      >
+    <View style={styles.editField}>
+      <Text style={styles.editFieldLabel}>
         {label}
       </Text>
 
-      <TextInput
-        value={value}
-        onChangeText={
-          onChangeText
-        }
-        placeholder={
-          placeholder
-        }
-        placeholderTextColor={
-          COLORS.muted
-        }
-        keyboardType={
-          keyboardType
-        }
-        secureTextEntry={
-          secureTextEntry
-        }
-        autoCapitalize={
-          secureTextEntry
-            ? "none"
-            : "sentences"
-        }
-        autoCorrect={false}
-        style={
-          styles.editInput
-        }
-      />
+      <View style={styles.editInputWrapper}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.muted}
+          keyboardType={keyboardType}
+          secureTextEntry={
+            secureTextEntry &&
+            !passwordVisible
+          }
+          autoCapitalize={
+            secureTextEntry
+              ? "none"
+              : "sentences"
+          }
+          autoCorrect={false}
+          style={[
+            styles.editInput,
+            shouldShowToggle &&
+              styles.editInputWithIcon,
+          ]}
+        />
+
+        {shouldShowToggle && (
+          <Pressable
+            onPress={() =>
+              setPasswordVisible(
+                (current) => !current,
+              )
+            }
+            style={({ pressed }) => [
+              styles.passwordEyeButton,
+
+              pressed &&
+                styles.buttonPressed,
+            ]}
+          >
+            {passwordVisible ? (
+              <EyeOff
+                size={18}
+                color={COLORS.muted}
+              />
+            ) : (
+              <Eye
+                size={18}
+                color={COLORS.muted}
+              />
+            )}
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -1378,6 +1469,12 @@ editFieldLabel: {
     COLORS.muted,
 },
 
+editInputWrapper: {
+  position: "relative",
+
+  justifyContent: "center",
+},
+
 editInput: {
   height: 42,
 
@@ -1401,6 +1498,21 @@ editInput: {
     COLORS.black,
 },
 
+editInputWithIcon: {
+  paddingRight: 44,
+},
+
+passwordEyeButton: {
+  position: "absolute",
+
+  right: 4,
+
+  width: 38,
+  height: 38,
+
+  alignItems: "center",
+  justifyContent: "center",
+},
 editModalActions: {
   flexDirection: "row",
 
