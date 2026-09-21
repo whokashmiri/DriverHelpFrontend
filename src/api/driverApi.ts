@@ -24,7 +24,16 @@ export interface CreateDriverPayload {
   phone?: string;
 }
 
-export async function createDriver(payload: CreateDriverPayload) {
+export interface UpdateDriverPayload {
+  name?: string;
+  iqamaId?: string;
+  phone?: string | null;
+  password?: string;
+}
+
+export async function createDriver(
+  payload: CreateDriverPayload,
+) {
   const response = await api.post<{
     success: boolean;
     message: string;
@@ -44,7 +53,9 @@ export async function getMyDrivers() {
   return response.data;
 }
 
-export async function getDriverById(driverId: string) {
+export async function getDriverById(
+  driverId: string,
+) {
   const response = await api.get<{
     success: boolean;
     driver: Driver;
@@ -53,14 +64,36 @@ export async function getDriverById(driverId: string) {
   return response.data;
 }
 
-export async function updateDriverStatus(driverId: string, isActive: boolean) {
+export async function updateDriver(
+  driverId: string,
+  payload: UpdateDriverPayload,
+) {
   const response = await api.patch<{
     success: boolean;
     message: string;
     driver: Driver;
-  }>(`/drivers/${driverId}/status`, {
-    isActive,
-  });
+  }>(
+    `/drivers/${driverId}`,
+    payload,
+  );
+
+  return response.data;
+}
+
+export async function updateDriverStatus(
+  driverId: string,
+  isActive: boolean,
+) {
+  const response = await api.patch<{
+    success: boolean;
+    message: string;
+    driver: Driver;
+  }>(
+    `/drivers/${driverId}/status`,
+    {
+      isActive,
+    },
+  );
 
   return response.data;
 }

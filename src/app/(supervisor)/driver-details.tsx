@@ -3,14 +3,21 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
-import { MessageCircle, Phone } from "lucide-react-native";
+import {
+  MessageCircle,
+  Pencil,
+  Phone,
+  X,
+} from "lucide-react-native";
 
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -18,7 +25,7 @@ import { useTranslation } from "react-i18next";
 
 import { AppScreen } from "../../components/AppScreen";
 
-import { getDriverById, updateDriverStatus } from "../../api/driverApi";
+import { getDriverById, updateDriverStatus ,updateDriver} from "../../api/driverApi";
 
 import { getDriverLocation } from "../../api/locationApi";
 import { getDriverStats } from "../../api/statsApi";
@@ -67,6 +74,24 @@ export default function DriverDetailsScreen() {
 
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
+  const [editVisible, setEditVisible] =
+  useState(false);
+
+const [editName, setEditName] =
+  useState("");
+
+const [editIqamaId, setEditIqamaId] =
+  useState("");
+
+const [editPhone, setEditPhone] =
+  useState("");
+
+const [editPassword, setEditPassword] =
+  useState("");
+
+const [isUpdatingDriver, setIsUpdatingDriver] =
+  useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -104,6 +129,145 @@ export default function DriverDetailsScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const openEditDriver = () => {
+  if (!driver) {
+    return;
+  }
+
+  setEditName(
+    driver.name ?? "",
+  );
+
+  setEditIqamaId(
+    driver.iqamaId ?? "",
+  );
+
+  setEditPhone(
+    driver.phone ?? "",
+  );
+
+  setEditPassword("");
+
+  setError(null);
+
+  setEditVisible(true);
+};
+
+const closeEditDriver = () => {
+  if (isUpdatingDriver) {
+    return;
+  }
+
+  setEditVisible(false);
+};
+
+const handleUpdateDriver = async () => {
+  if (
+    !driver ||
+    !driverId ||
+    isUpdatingDriver
+  ) {
+    return;
+  }
+
+  const name =
+    editName.trim();
+
+  const iqamaId =
+    editIqamaId.trim();
+
+  const phone =
+    editPhone.trim();
+
+  const password =
+    editPassword.trim();
+
+  if (!name) {
+    setError(
+      t(
+        "drivers.nameRequired",
+        "Driver name is required",
+      ),
+    );
+
+    return;
+  }
+
+  if (!iqamaId) {
+    setError(
+      t(
+        "drivers.iqamaRequired",
+        "Iqama ID is required",
+      ),
+    );
+
+    return;
+  }
+
+  if (
+    password &&
+    password.length < 6
+  ) {
+    setError(
+      t(
+        "drivers.passwordLength",
+        "Password must be at least 6 characters",
+      ),
+    );
+
+    return;
+  }
+
+  try {
+    setIsUpdatingDriver(true);
+
+    setError(null);
+
+    const payload: {
+      name: string;
+      iqamaId: string;
+      phone: string | null;
+      password?: string;
+    } = {
+      name,
+      iqamaId,
+      phone:
+        phone || null,
+    };
+
+    if (password) {
+      payload.password =
+        password;
+    }
+
+    const response =
+      await updateDriver(
+        driverId,
+        payload,
+      );
+
+    setDriver(
+      response.driver,
+    );
+
+    setEditPassword("");
+
+    setEditVisible(false);
+  } catch (err) {
+    setError(
+      getErrorMessage(
+        err,
+        t(
+          "drivers.updateFailed",
+          "Unable to update driver",
+        ),
+      ),
+    );
+  } finally {
+    setIsUpdatingDriver(false);
+  }
+};
 
   const toggleStatus = async () => {
     if (!driver || !driverId || isUpdatingStatus) {
@@ -217,6 +381,32 @@ export default function DriverDetailsScreen() {
                   </Text>
                 </View>
               </View>
+
+              <Pressable
+  onPress={openEditDriver}
+  style={({ pressed }) => [
+    styles.editDriverButton,
+
+    pressed &&
+      styles.buttonPressed,
+  ]}
+>
+  <Pencil
+    size={15}
+    color={COLORS.primary}
+  />
+
+  <Text
+    style={
+      styles.editDriverButtonText
+    }
+  >
+    {t(
+      "common.edit",
+      "Edit",
+    )}
+  </Text>
+</Pressable>
             </View>
 
             <View style={styles.card}>
@@ -321,11 +511,346 @@ export default function DriverDetailsScreen() {
             </Pressable>
           </>
         ) : null}
+
+        <EditDriverModal
+  visible={editVisible}
+  name={editName}
+  iqamaId={editIqamaId}
+  phone={editPhone}
+  password={editPassword}
+  loading={isUpdatingDriver}
+  onNameChange={setEditName}
+  onIqamaChange={setEditIqamaId}
+  onPhoneChange={setEditPhone}
+  onPasswordChange={setEditPassword}
+  onClose={closeEditDriver}
+  onSave={() =>
+    void handleUpdateDriver()
+  }
+/>
       </ScrollView>
     </AppScreen>
   );
 }
 
+function EditDriverModal({
+  visible,
+  name,
+  iqamaId,
+  phone,
+  password,
+  loading,
+  onNameChange,
+  onIqamaChange,
+  onPhoneChange,
+  onPasswordChange,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+
+  name: string;
+
+  iqamaId: string;
+
+  phone: string;
+
+  password: string;
+
+  loading: boolean;
+
+  onNameChange:
+    (value: string) => void;
+
+  onIqamaChange:
+    (value: string) => void;
+
+  onPhoneChange:
+    (value: string) => void;
+
+  onPasswordChange:
+    (value: string) => void;
+
+  onClose: () => void;
+
+  onSave: () => void;
+}) {
+  const { t } =
+    useTranslation();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View
+        style={
+          styles.editModalOverlay
+        }
+      >
+        <View
+          style={
+            styles.editModalCard
+          }
+        >
+          <View
+            style={
+              styles.editModalHeader
+            }
+          >
+            <View
+              style={{
+                flex: 1,
+              }}
+            >
+              <Text
+                style={
+                  styles.editModalTitle
+                }
+              >
+                {t(
+                  "drivers.editDriver",
+                  "Edit Driver",
+                )}
+              </Text>
+
+              <Text
+                style={
+                  styles.editModalSubtitle
+                }
+              >
+                {t(
+                  "drivers.editDriverDescription",
+                  "Update driver information",
+                )}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={onClose}
+              disabled={loading}
+              style={
+                styles.editModalClose
+              }
+            >
+              <X
+                size={17}
+                color={
+                  COLORS.primary
+                }
+              />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={
+              false
+            }
+          >
+            <EditField
+              label={t(
+                "profile.name",
+                "Name",
+              )}
+              value={name}
+              onChangeText={
+                onNameChange
+              }
+              placeholder={t(
+                "drivers.namePlaceholder",
+                "Driver name",
+              )}
+            />
+
+            <EditField
+              label={t(
+                "profile.iqama",
+                "Iqama ID",
+              )}
+              value={iqamaId}
+              onChangeText={
+                onIqamaChange
+              }
+              placeholder={t(
+                "drivers.iqamaPlaceholder",
+                "Iqama ID",
+              )}
+              keyboardType="number-pad"
+            />
+
+            <EditField
+              label={t(
+                "profile.phone",
+                "Phone",
+              )}
+              value={phone}
+              onChangeText={
+                onPhoneChange
+              }
+              placeholder={t(
+                "drivers.phonePlaceholder",
+                "Phone number",
+              )}
+              keyboardType="phone-pad"
+            />
+
+            <EditField
+              label={t(
+                "profile.password",
+                "New Password",
+              )}
+              value={password}
+              onChangeText={
+                onPasswordChange
+              }
+              placeholder={t(
+                "drivers.passwordOptional",
+                "Leave empty to keep current password",
+              )}
+              secureTextEntry
+            />
+          </ScrollView>
+
+          <View
+            style={
+              styles.editModalActions
+            }
+          >
+            <Pressable
+              onPress={onClose}
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.editCancelButton,
+
+                pressed &&
+                  styles.buttonPressed,
+              ]}
+            >
+              <Text
+                style={
+                  styles.editCancelText
+                }
+              >
+                {t(
+                  "common.cancel",
+                  "Cancel",
+                )}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={onSave}
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.editSaveButton,
+
+                pressed &&
+                  styles.buttonPressed,
+
+                loading &&
+                  styles.buttonDisabled,
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator
+                  size="small"
+                  color={
+                    COLORS.white
+                  }
+                />
+              ) : (
+                <Text
+                  style={
+                    styles.editSaveText
+                  }
+                >
+                  {t(
+                    "common.save",
+                    "Save",
+                  )}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+
+
+function EditField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = "default",
+  secureTextEntry = false,
+}: {
+  label: string;
+
+  value: string;
+
+  onChangeText:
+    (value: string) => void;
+
+  placeholder: string;
+
+  keyboardType?:
+    | "default"
+    | "number-pad"
+    | "phone-pad";
+
+  secureTextEntry?: boolean;
+}) {
+  return (
+    <View
+      style={
+        styles.editField
+      }
+    >
+      <Text
+        style={
+          styles.editFieldLabel
+        }
+      >
+        {label}
+      </Text>
+
+      <TextInput
+        value={value}
+        onChangeText={
+          onChangeText
+        }
+        placeholder={
+          placeholder
+        }
+        placeholderTextColor={
+          COLORS.muted
+        }
+        keyboardType={
+          keyboardType
+        }
+        secureTextEntry={
+          secureTextEntry
+        }
+        autoCapitalize={
+          secureTextEntry
+            ? "none"
+            : "sentences"
+        }
+        autoCorrect={false}
+        style={
+          styles.editInput
+        }
+      />
+    </View>
+  );
+}
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -743,4 +1268,195 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
   },
+
+  editDriverButton: {
+  minHeight: 34,
+
+  flexDirection: "row",
+  alignItems: "center",
+
+  gap: 5,
+
+  paddingHorizontal: 10,
+
+  borderRadius: 9,
+
+  backgroundColor:
+    COLORS.white,
+
+  borderWidth: 1,
+  borderColor:
+    COLORS.border,
+},
+
+editDriverButtonText: {
+  fontSize: 9,
+
+  fontWeight: "800",
+
+  color:
+    COLORS.primary,
+},
+
+editModalOverlay: {
+  flex: 1,
+
+  paddingHorizontal: 16,
+
+  alignItems: "center",
+  justifyContent: "center",
+
+  backgroundColor:
+    "rgba(10, 9, 12, 0.5)",
+},
+
+editModalCard: {
+  width: "100%",
+  maxWidth: 420,
+
+  maxHeight: "90%",
+
+  padding: 14,
+
+  borderRadius: 16,
+
+  backgroundColor:
+    COLORS.white,
+},
+
+editModalHeader: {
+  flexDirection: "row",
+
+  alignItems: "center",
+
+  marginBottom: 12,
+},
+
+editModalTitle: {
+  fontSize: 15,
+
+  fontWeight: "900",
+
+  color:
+    COLORS.primary,
+},
+
+editModalSubtitle: {
+  marginTop: 2,
+
+  fontSize: 9,
+
+  color:
+    COLORS.muted,
+},
+
+editModalClose: {
+  width: 32,
+  height: 32,
+
+  alignItems: "center",
+  justifyContent: "center",
+
+  borderRadius: 9,
+
+  backgroundColor:
+    COLORS.light,
+},
+
+editField: {
+  marginBottom: 10,
+},
+
+editFieldLabel: {
+  marginBottom: 5,
+
+  fontSize: 9,
+
+  fontWeight: "800",
+
+  color:
+    COLORS.muted,
+},
+
+editInput: {
+  height: 42,
+
+  paddingHorizontal: 10,
+
+  borderWidth: 1,
+
+  borderColor:
+    COLORS.border,
+
+  borderRadius: 9,
+
+  backgroundColor:
+    COLORS.light,
+
+  fontSize: 11,
+
+  fontWeight: "600",
+
+  color:
+    COLORS.black,
+},
+
+editModalActions: {
+  flexDirection: "row",
+
+  gap: 8,
+
+  marginTop: 5,
+},
+
+editCancelButton: {
+  flex: 1,
+
+  height: 40,
+
+  alignItems: "center",
+  justifyContent: "center",
+
+  borderWidth: 1,
+
+  borderColor:
+    COLORS.border,
+
+  borderRadius: 9,
+
+  backgroundColor:
+    COLORS.light,
+},
+
+editCancelText: {
+  fontSize: 10,
+
+  fontWeight: "800",
+
+  color:
+    COLORS.primary,
+},
+
+editSaveButton: {
+  flex: 1,
+
+  height: 40,
+
+  alignItems: "center",
+  justifyContent: "center",
+
+  borderRadius: 9,
+
+  backgroundColor:
+    COLORS.primary,
+},
+
+editSaveText: {
+  fontSize: 10,
+
+  fontWeight: "900",
+
+  color:
+    COLORS.white,
+},
 });

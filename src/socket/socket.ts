@@ -2,10 +2,10 @@ import { io, Socket } from "socket.io-client";
 
 import { getToken } from "../api/client";
 
-// const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
+const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
 
 // For local development:
-const SOCKET_URL = "http://192.168.0.138:9000";
+// const SOCKET_URL = "http://192.168.0.138:9000";
 
 let socket: Socket | null = null;
 
@@ -44,21 +44,10 @@ export interface LocationAcknowledgement {
   message?: string;
 }
 
-/**
- * Returns current socket instance.
- *
- * Does not automatically connect.
- */
 export function getSocket() {
   return socket;
 }
 
-/**
- * Create socket instance if it does not exist.
- *
- * autoConnect is false so we can make sure
- * authentication token is loaded first.
- */
 function createSocket() {
   if (socket) {
     return socket;
@@ -66,8 +55,6 @@ function createSocket() {
 
   socket = io(SOCKET_URL, {
     autoConnect: false,
-
-    transports: ["websocket"],
 
     reconnection: true,
 
@@ -80,15 +67,21 @@ function createSocket() {
     timeout: 20000,
   });
 
+  socket.on("connect", () => {
+    console.log("[Socket] Connected:", socket?.id);
+  });
+
+  socket.on("connect_error", (error) => {
+    console.log("[Socket] Connect error:", error.message);
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.log("[Socket] Disconnected:", reason);
+  });
+
   return socket;
 }
 
-/**
- * Connect authenticated Socket.IO client.
- *
- * Call after login or when restoring
- * an authenticated app session.
- */
 export async function connectSocket() {
   const token = await getToken();
 
@@ -98,12 +91,6 @@ export async function connectSocket() {
 
   const instance = createSocket();
 
-  /**
-   * Important:
-   *
-   * Update auth every time before connecting
-   * because login may have generated a new JWT.
-   */
   instance.auth = {
     token,
   };

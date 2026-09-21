@@ -184,7 +184,7 @@ export default function LoginScreen() {
               )}
             </Pressable>
 
-            <Pressable
+            {/* <Pressable
               onPress={() => router.push("/(auth)/register")}
               disabled={isSubmitting}
               style={styles.secondaryButton}
@@ -195,7 +195,7 @@ export default function LoginScreen() {
                   {t("auth.register", "Register")}
                 </Text>
               </Text>
-            </Pressable>
+            </Pressable> */}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
