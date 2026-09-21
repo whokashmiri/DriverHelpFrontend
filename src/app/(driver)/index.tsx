@@ -261,39 +261,58 @@ export default function DriverHomeScreen() {
   /*
    * Live order timer.
    */
-  useEffect(() => {
-    if (!activeOrder) {
-      setOrderElapsedSeconds(0);
+useEffect(() => {
+  const pickupStart =
+    activeOrder?.pickupTime
+      ? new Date(
+          activeOrder.pickupTime,
+        ).getTime()
+      : uploadingPickup &&
+          pickupPhoto?.time
+        ? pickupPhoto.time.getTime()
+        : null;
 
-      return;
-    }
+  if (!pickupStart) {
+    setOrderElapsedSeconds(0);
 
-    if (activeOrder.status === "delivered") {
-      setOrderElapsedSeconds(activeOrder.durationSeconds ?? 0);
+    return;
+  }
 
-      return;
-    }
+  const updateTimer = () => {
+    const elapsed =
+      Math.max(
+        0,
+        Math.floor(
+          (
+            Date.now() -
+            pickupStart
+          ) / 1000,
+        ),
+      );
 
-    const updateTimer = () => {
-      const pickupTime = new Date(activeOrder.pickupTime).getTime();
+    setOrderElapsedSeconds(
+      elapsed,
+    );
+  };
 
-      if (Number.isNaN(pickupTime)) {
-        return;
-      }
+  updateTimer();
 
-      const elapsed = Math.max(0, Math.floor((Date.now() - pickupTime) / 1000));
+  const interval =
+    setInterval(
+      updateTimer,
+      1000,
+    );
 
-      setOrderElapsedSeconds(elapsed);
-    };
-
-    updateTimer();
-
-    const interval = setInterval(updateTimer, 1000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [activeOrder]);
+  return () => {
+    clearInterval(
+      interval,
+    );
+  };
+}, [
+  activeOrder,
+  uploadingPickup,
+  pickupPhoto?.time,
+]);
 
   const handleStartShift = async () => {
     try {
@@ -399,167 +418,347 @@ export default function DriverHomeScreen() {
     }
   };
 
-  const takeOrderPhoto = async (type: "pickup" | "delivery") => {
-    try {
-      setOrderError(null);
+const takeOrderPhoto = async (
+  type: "pickup" | "delivery",
+) => {
+  try {
+    setOrderError(null);
 
-      if (type === "pickup" && activeOrder) {
-        return;
-      }
+    if (
+      type === "pickup" &&
+      (activeOrder || uploadingPickup)
+    ) {
+      return;
+    }
 
-      if (type === "pickup" && !isWorking) {
-        setOrderError(t("driver.startShiftFirst", "Start your shift first"));
+    if (
+      type === "pickup" &&
+      !isWorking
+    ) {
+      setOrderError(
+        t(
+          "driver.startShiftFirst",
+          "Start your shift first",
+        ),
+      );
 
-        return;
-      }
+      return;
+    }
 
-      if (type === "delivery" && !activeOrder) {
-        return;
-      }
+    if (
+      type === "delivery" &&
+      (!activeOrder || uploadingDelivery)
+    ) {
+      return;
+    }
 
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
+    const permission =
+      await ImagePicker.requestCameraPermissionsAsync();
 
-      if (!permission.granted) {
-        Alert.alert(
-          t("common.permissionRequired", "Permission Required"),
-          t("orders.cameraPermission", "Camera permission is required."),
-        );
+    if (!permission.granted) {
+      Alert.alert(
+        t(
+          "common.permissionRequired",
+          "Permission Required",
+        ),
+        t(
+          "orders.cameraPermission",
+          "Camera permission is required.",
+        ),
+      );
 
-        return;
-      }
+      return;
+    }
 
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    const result =
+      await ImagePicker.launchCameraAsync({
+        mediaTypes:
+          ImagePicker.MediaTypeOptions.Images,
 
         allowsEditing: false,
 
-        quality: 0.65,
+        /*
+         * Camera does an initial lightweight
+         * reduction. Our image utility performs
+         * the final compression.
+         */
+        quality: 0.8,
 
-        cameraType: ImagePicker.CameraType.back,
+        cameraType:
+          ImagePicker.CameraType.back,
       });
 
-      if (result.canceled) {
-        return;
-      }
+    if (result.canceled) {
+      return;
+    }
 
-      const asset = result.assets?.[0];
+    const asset =
+      result.assets?.[0];
 
-      if (!asset?.uri) {
-        setOrderError(
-          t("orders.photoFailed", "Unable to read captured photo."),
-        );
-
-        return;
-      }
-
-      const compressedUri = await compressOrderImage(
-        asset.uri,
-        type === "pickup" ? "pickup" : "delivery",
-      );
-
-      const photo: OrderPhotoInput = {
-        uri: compressedUri,
-        time: new Date(),
-      };
-
-      if (type === "pickup") {
-        await uploadPickup(photo);
-
-        return;
-      }
-
-      await uploadDelivery(photo);
-    } catch (error) {
+    if (!asset?.uri) {
       setOrderError(
-        getErrorMessage(
-          error,
-          t("orders.photoFailed", "Unable to capture photo"),
+        t(
+          "orders.photoFailed",
+          "Unable to read captured photo.",
         ),
       );
-    }
-  };
 
-  const uploadPickup = async (photo: OrderPhotoInput) => {
-    try {
+      return;
+    }
+
+    const capturedPhoto: OrderPhotoInput = {
+      uri: asset.uri,
+      time: new Date(),
+    };
+
+    /*
+     * OPTIMISTIC UI
+     *
+     * Show the original local image immediately.
+     * Do not make the user wait for compression
+     * or network upload.
+     */
+    if (type === "pickup") {
+      setPickupPhoto(
+        capturedPhoto,
+      );
+
       setUploadingPickup(true);
 
+      void processPickupInBackground(
+        capturedPhoto,
+      );
+
+      return;
+    }
+
+    setDeliveryPhoto(
+      capturedPhoto,
+    );
+
+    setUploadingDelivery(true);
+
+    void processDeliveryInBackground(
+      capturedPhoto,
+    );
+  } catch (error) {
+    setOrderError(
+      getErrorMessage(
+        error,
+        t(
+          "orders.photoFailed",
+          "Unable to capture photo",
+        ),
+      ),
+    );
+  }
+};
+
+ const processPickupInBackground =
+  async (
+    capturedPhoto: OrderPhotoInput,
+  ) => {
+    try {
       setOrderError(null);
 
-      setPickupPhoto(photo);
+      /*
+       * STEP 1:
+       * Compress local camera image.
+       */
+      const compressedUri =
+        await compressOrderImage(
+          capturedPhoto.uri,
+          "pickup",
+        );
 
-      const response = await createPickupOrder({
-        pickupPhoto: photo,
+      const compressedPhoto: OrderPhotoInput = {
+        uri: compressedUri,
 
-        notes: orderNotes.trim() || undefined,
-      });
+        /*
+         * Keep the original capture time.
+         * Compression time must NOT become
+         * pickup time.
+         */
+        time:
+          capturedPhoto.time,
+      };
 
-      const createdOrder = response.order;
+      /*
+       * Replace preview with compressed file.
+       * UI remains visible throughout.
+       */
+      setPickupPhoto(
+        compressedPhoto,
+      );
 
-      setActiveOrder(createdOrder);
+      /*
+       * STEP 2:
+       * Upload compressed image.
+       */
+      const response =
+        await createPickupOrder({
+          pickupPhoto:
+            compressedPhoto,
+
+          notes:
+            orderNotes.trim() ||
+            undefined,
+        });
+
+      const createdOrder =
+        response.order;
+
+      setActiveOrder(
+        createdOrder,
+      );
 
       setOrders((current) => [
         createdOrder,
 
-        ...current.filter((order) => order._id !== createdOrder._id),
+        ...current.filter(
+          (order) =>
+            order._id !==
+            createdOrder._id,
+        ),
       ]);
 
-      setOrderNotes(createdOrder.notes ?? orderNotes);
+      setOrderNotes(
+        createdOrder.notes ??
+          orderNotes,
+      );
 
-      if (createdOrder.pickupPhoto?.url) {
+      /*
+       * Replace local compressed URI
+       * with permanent server image URL.
+       */
+      if (
+        createdOrder.pickupPhoto
+          ?.url
+      ) {
         setPickupPhoto({
-          uri: createdOrder.pickupPhoto.url,
+          uri:
+            createdOrder
+              .pickupPhoto.url,
 
           time: safeDate(
-            createdOrder.pickupPhoto.takenAt || createdOrder.pickupTime,
+            createdOrder
+              .pickupPhoto
+              .takenAt ||
+              createdOrder
+                .pickupTime,
           ),
         });
       }
 
-      setDeliveryPhoto(null);
+      setDeliveryPhoto(
+        null,
+      );
 
-      setOrderElapsedSeconds(0);
+      setOrderElapsedSeconds(
+        0,
+      );
     } catch (error) {
+      /*
+       * Optimistic operation failed,
+       * so rollback pickup UI.
+       */
       setPickupPhoto(null);
 
       setOrderError(
         getErrorMessage(
           error,
-          t("orders.pickupUploadFailed", "Unable to save pickup photo"),
+          t(
+            "orders.pickupUploadFailed",
+            "Unable to save pickup photo",
+          ),
         ),
       );
     } finally {
-      setUploadingPickup(false);
+      setUploadingPickup(
+        false,
+      );
     }
-  };
+  };;
 
-  const uploadDelivery = async (photo: OrderPhotoInput) => {
-    if (!activeOrder?._id) {
+const processDeliveryInBackground =
+  async (
+    capturedPhoto: OrderPhotoInput,
+  ) => {
+    const currentOrder =
+      activeOrder;
+
+    if (!currentOrder?._id) {
+      setUploadingDelivery(
+        false,
+      );
+
       return;
     }
 
     try {
-      setUploadingDelivery(true);
-
       setOrderError(null);
 
-      setDeliveryPhoto(photo);
+      /*
+       * STEP 1:
+       * Compress in background.
+       */
+      const compressedUri =
+        await compressOrderImage(
+          capturedPhoto.uri,
+          "delivery",
+        );
 
-      const response = await completeOrderDelivery({
-        orderId: activeOrder._id,
+      const compressedPhoto: OrderPhotoInput = {
+        uri: compressedUri,
 
-        deliveryPhoto: photo,
-      });
+        time:
+          capturedPhoto.time,
+      };
 
-      const completedOrder = response.order;
+      setDeliveryPhoto(
+        compressedPhoto,
+      );
+
+      /*
+       * STEP 2:
+       * Upload compressed file.
+       */
+      const response =
+        await completeOrderDelivery({
+          orderId:
+            currentOrder._id,
+
+          deliveryPhoto:
+            compressedPhoto,
+        });
+
+      const completedOrder =
+        response.order;
 
       setOrders((current) => [
         completedOrder,
 
-        ...current.filter((order) => order._id !== completedOrder._id),
+        ...current.filter(
+          (order) =>
+            order._id !==
+            completedOrder._id,
+        ),
       ]);
 
-      setOrderElapsedSeconds(completedOrder.durationSeconds ?? 0);
+      setOrderElapsedSeconds(
+        completedOrder
+          .durationSeconds ??
+          0,
+      );
 
+      /*
+       * Only clear active order after
+       * backend confirms delivery.
+       *
+       * This prevents a new pickup being
+       * created while delivery is still
+       * uploading.
+       */
       setActiveOrder(null);
 
       setPickupPhoto(null);
@@ -570,16 +769,25 @@ export default function DriverHomeScreen() {
 
       setNotesExpanded(false);
     } catch (error) {
+      /*
+       * Roll back delivery photo because
+       * backend never completed the order.
+       */
       setDeliveryPhoto(null);
 
       setOrderError(
         getErrorMessage(
           error,
-          t("orders.deliveryUploadFailed", "Unable to complete delivery"),
+          t(
+            "orders.deliveryUploadFailed",
+            "Unable to complete delivery",
+          ),
         ),
       );
     } finally {
-      setUploadingDelivery(false);
+      setUploadingDelivery(
+        false,
+      );
     }
   };
 
@@ -1142,20 +1350,48 @@ function CompactPhotoButton({
         pressed && !disabled && styles.compactPhotoPressed,
       ]}
     >
-      <View style={styles.compactPhotoPreview}>
-        {loading ? (
-          <ActivityIndicator size="small" color={COLORS.primary} />
-        ) : photo?.uri ? (
-          <Image
-            source={{
-              uri: photo.uri,
-            }}
-            style={styles.compactPhotoImage}
+    <View style={styles.compactPhotoPreview}>
+  {photo?.uri ? (
+    <>
+      <Image
+        source={{
+          uri: photo.uri,
+        }}
+        style={
+          styles.compactPhotoImage
+        }
+      />
+
+      {loading && (
+        <View
+          style={
+            styles.photoUploadingOverlay
+          }
+        >
+          <ActivityIndicator
+            size="small"
+            color={
+              COLORS.white
+            }
           />
-        ) : (
-          <Text style={styles.compactPhotoPlus}>+</Text>
-        )}
-      </View>
+        </View>
+      )}
+    </>
+  ) : loading ? (
+    <ActivityIndicator
+      size="small"
+      color={COLORS.primary}
+    />
+  ) : (
+    <Text
+      style={
+        styles.compactPhotoPlus
+      }
+    >
+      +
+    </Text>
+  )}
+</View>
 
       <View style={styles.compactPhotoText}>
         <Text style={styles.compactPhotoTitle}>{title}</Text>
@@ -3461,4 +3697,15 @@ const styles = StyleSheet.create({
 
     color: COLORS.error,
   },
+  photoUploadingOverlay: {
+  ...StyleSheet.absoluteFill,
+
+  alignItems: "center",
+  justifyContent: "center",
+
+  borderRadius: 8,
+
+  backgroundColor:
+    "rgba(0, 0, 0, 0.28)",
+},
 });
