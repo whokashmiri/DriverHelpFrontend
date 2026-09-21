@@ -1,3 +1,4 @@
+import {VehicleType} from "./driver"
 export interface LocationPayload {
   latitude: number;
   longitude: number;
@@ -17,6 +18,7 @@ export interface DriverLocation {
         name?: string;
         iqamaId?: string;
         phone?: string | null;
+        vehicleType:VehicleType,
         isActive?: boolean;
       };
 

@@ -18,7 +18,7 @@ import { AppScreen } from "../../components/AppScreen";
 
 import { useLanguage } from "../../context/LanguageContext";
 
-import type { Driver } from "../../types/driver";
+import type { Driver ,VehicleType } from "../../types/driver";
 
 import { getErrorMessage } from "../../utils";
 
@@ -50,6 +50,13 @@ export default function DriversScreen() {
   const [iqamaId, setIqamaId] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+
+  const [
+  vehicleType,
+  setVehicleType,
+] = useState<
+  "car" | "bike"
+>("car");
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -85,6 +92,7 @@ export default function DriversScreen() {
     const cleanName = name.trim();
     const cleanIqamaId = iqamaId.trim();
     const cleanPhone = phone.trim();
+    
 
     if (!cleanName || !cleanIqamaId || password.length < 6) {
       setError(
@@ -100,14 +108,21 @@ export default function DriversScreen() {
     try {
       setIsCreating(true);
       setError(null);
+await createDriver({
+  name:
+    cleanName,
 
-      await createDriver({
-        name: cleanName,
-        iqamaId: cleanIqamaId,
-        password,
-        phone: cleanPhone || undefined,
-      });
+  iqamaId:
+    cleanIqamaId,
 
+  password,
+
+  phone:
+    cleanPhone ||
+    undefined,
+
+  vehicleType,
+});
       setName("");
       setIqamaId("");
       setPhone("");
@@ -162,6 +177,8 @@ export default function DriversScreen() {
             )}
           </Text>
 
+          
+
           <FormField
             label={t("profile.name", "Driver name")}
             value={name}
@@ -191,6 +208,15 @@ export default function DriversScreen() {
             textAlign={textAlign}
             editable={!isCreating}
           />
+          <VehicleTypeSelector
+  value={vehicleType}
+  onChange={
+    setVehicleType
+  }
+  disabled={
+    isCreating
+  }
+/>
 
           <FormField
             label={t("auth.password", "Password")}
@@ -302,6 +328,23 @@ export default function DriversScreen() {
                       {driver.phone}
                     </Text>
                   )}
+
+                  <Text
+  style={
+    styles.driverVehicle
+  }
+>
+  {driver.vehicleType ===
+  "bike"
+    ? t(
+        "drivers.bike",
+        "Bike",
+      )
+    : t(
+        "drivers.car",
+        "Car",
+      )}
+</Text>
                 </View>
 
                 <View
@@ -349,6 +392,159 @@ type FormFieldProps = {
 
   editable?: boolean;
 };
+
+function VehicleTypeSelector({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value:
+    | "car"
+    | "bike";
+
+  onChange: (
+    value:
+      | "car"
+      | "bike",
+  ) => void;
+
+  disabled?: boolean;
+}) {
+  const { t } =
+    useTranslation();
+
+  return (
+    <View
+      style={
+        styles.field
+      }
+    >
+      <Text
+        style={
+          styles.vehicleLabel
+        }
+      >
+        {t(
+          "drivers.vehicleType",
+          "Vehicle Type",
+        )}
+      </Text>
+
+      <View
+        style={
+          styles.vehicleOptions
+        }
+      >
+        <VehicleRadio
+          label={t(
+            "drivers.car",
+            "Car",
+          )}
+          selected={
+            value ===
+            "car"
+          }
+          disabled={
+            disabled
+          }
+          onPress={() =>
+            onChange(
+              "car",
+            )
+          }
+        />
+
+        <VehicleRadio
+          label={t(
+            "drivers.bike",
+            "Bike",
+          )}
+          selected={
+            value ===
+            "bike"
+          }
+          disabled={
+            disabled
+          }
+          onPress={() =>
+            onChange(
+              "bike",
+            )
+          }
+        />
+      </View>
+    </View>
+  );
+}
+
+function VehicleRadio({
+  label,
+  selected,
+  disabled,
+  onPress,
+}: {
+  label: string;
+
+  selected: boolean;
+
+  disabled: boolean;
+
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      disabled={
+        disabled
+      }
+      onPress={
+        onPress
+      }
+      style={({
+        pressed,
+      }) => [
+        styles.vehicleOption,
+
+        selected &&
+          styles.vehicleOptionSelected,
+
+        pressed &&
+          !disabled &&
+          styles.vehicleOptionPressed,
+
+        disabled &&
+          styles.vehicleOptionDisabled,
+      ]}
+    >
+      <View
+        style={[
+          styles.radioOuter,
+
+          selected &&
+            styles.radioOuterSelected,
+        ]}
+      >
+        {selected && (
+          <View
+            style={
+              styles.radioInner
+            }
+          />
+        )}
+      </View>
+
+      <Text
+        style={[
+          styles.vehicleOptionText,
+
+          selected &&
+            styles.vehicleOptionTextSelected,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 function FormField({
   label,
@@ -727,4 +923,112 @@ const styles = StyleSheet.create({
   inactiveText: {
     color: COLORS.error,
   },
+
+  vehicleLabel: {
+  marginBottom: 5,
+
+  fontSize: 10,
+  fontWeight: "700",
+
+  color:
+    COLORS.primary,
+},
+
+vehicleOptions: {
+  flexDirection: "row",
+
+  gap: 8,
+},
+
+vehicleOption: {
+  flex: 1,
+
+  height: 38,
+
+  flexDirection: "row",
+
+  alignItems: "center",
+  justifyContent: "center",
+
+  gap: 7,
+
+  borderWidth: 1,
+  borderColor:
+    COLORS.border,
+
+  borderRadius: 8,
+
+  backgroundColor:
+    COLORS.light,
+},
+
+vehicleOptionSelected: {
+  borderColor:
+    COLORS.primary,
+
+  backgroundColor:
+    COLORS.successBackground,
+},
+
+vehicleOptionPressed: {
+  opacity: 0.75,
+},
+
+vehicleOptionDisabled: {
+  opacity: 0.5,
+},
+
+radioOuter: {
+  width: 16,
+  height: 16,
+
+  borderRadius: 8,
+
+  borderWidth: 2,
+  borderColor:
+    COLORS.muted,
+
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+radioOuterSelected: {
+  borderColor:
+    COLORS.primary,
+},
+
+radioInner: {
+  width: 8,
+  height: 8,
+
+  borderRadius: 4,
+
+  backgroundColor:
+    COLORS.primary,
+},
+
+vehicleOptionText: {
+  fontSize: 10,
+
+  fontWeight: "700",
+
+  color:
+    COLORS.muted,
+},
+
+vehicleOptionTextSelected: {
+  color:
+    COLORS.primary,
+},
+
+driverVehicle: {
+  marginTop: 2,
+
+  fontSize: 8,
+
+  fontWeight: "700",
+
+  color:
+    COLORS.primary,
+},
 });

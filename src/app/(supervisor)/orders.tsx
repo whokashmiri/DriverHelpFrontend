@@ -57,7 +57,7 @@ import type {
 
 import type {
   Driver,
-} from "../../api/driverApi";
+} from "../../types/driver";
 
 const COLORS = {
   black: "#0A090C",

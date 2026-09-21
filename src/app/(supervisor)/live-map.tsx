@@ -18,11 +18,17 @@ import { AppScreen } from "../../components/AppScreen";
 import { getMyDriversLocations } from "../../api/locationApi";
 
 import { onDriverLocationUpdate } from "../../socket/socket";
+import {
+  Bike,
+  Car,
+  PersonStanding,
+} from "lucide-react-native";
 
 import type {
   DriverLiveLocationUpdate,
   DriverLocation,
 } from "../../types/location";
+
 
 import { getErrorMessage } from "../../utils";
 
@@ -43,15 +49,6 @@ const COLORS = {
   successBackground: "#EAF7EE",
 };
 
-/*
- * MapLibre's public demo style.
- *
- * No Google Maps API key is required.
- *
- * Suitable for development/testing.
- * For production, use your own hosted tiles/style
- * or a dedicated tile provider.
- */
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 const DEFAULT_CENTER: [number, number] = [
@@ -64,12 +61,7 @@ const DEFAULT_ZOOM = 10;
 export default function LiveMapScreen() {
   const { t } = useTranslation();
 
-  /*
-   * MapLibre Camera ref.
-   *
-   * Using any here avoids version-specific
-   * CameraRef type differences.
-   */
+
   const cameraRef = useRef<any>(null);
 
   const [locations, setLocations] = useState<DriverLocation[]>([]);
@@ -402,16 +394,22 @@ export default function LiveMapScreen() {
                           selected && styles.markerLabelSelected,
                         ]}
                       >
-                        <View
-                          style={[
-                            styles.marker,
-                            selected && styles.markerSelected,
-                          ]}
-                        >
-                          <Text style={styles.markerText}>
-                            {getDriverInitial(driver?.name)}
-                          </Text>
-                        </View>
+                      <View
+  style={[
+    styles.marker,
+
+    selected &&
+      styles.markerSelected,
+  ]}
+>
+  <DriverVehicleIcon
+    vehicleType={
+      driver?.vehicleType
+    }
+    size={17}
+    color={COLORS.white}
+  />
+</View>
 
                         <View style={styles.markerDriverInfo}>
                           <Text
@@ -548,11 +546,19 @@ function DriverLocationCard({
   return (
     <View style={styles.driverCard}>
       <View style={styles.driverCardTop}>
-        <View style={styles.driverAvatar}>
-          <Text style={styles.driverAvatarText}>
-            {getDriverInitial(driver?.name)}
-          </Text>
-        </View>
+       <View
+  style={
+    styles.driverAvatar
+  }
+>
+  <DriverVehicleIcon
+    vehicleType={
+      driver?.vehicleType
+    }
+    size={19}
+    color={COLORS.white}
+  />
+</View>
 
         <View style={styles.driverInfo}>
           <Text numberOfLines={1} style={styles.driverName}>
@@ -562,6 +568,28 @@ function DriverLocationCard({
           <Text numberOfLines={1} style={styles.driverSub}>
             {driver?.iqamaId ?? "-"}
           </Text>
+
+          <Text
+  numberOfLines={1}
+  style={
+    styles.driverVehicleType
+  }
+>
+  {driver?.vehicleType === "car"
+    ? t(
+        "drivers.car",
+        "Car",
+      )
+    : driver?.vehicleType === "bike"
+      ? t(
+          "drivers.bike",
+          "Bike",
+        )
+      : t(
+          "drivers.walking",
+          "Walking",
+        )}
+</Text>
         </View>
 
         <Pressable onPress={onClose} style={styles.closeButton}>
@@ -675,6 +703,50 @@ function getDriverId(location: DriverLocation) {
   return location.driver?._id ?? null;
 }
 
+function DriverVehicleIcon({
+  vehicleType,
+  size = 17,
+  color = COLORS.white,
+}: {
+  vehicleType?: string | null;
+
+  size?: number;
+
+  color?: string;
+}) {
+  if (
+    vehicleType === "bike"
+  ) {
+    return (
+      <Bike
+        size={size}
+        color={color}
+        strokeWidth={2.4}
+      />
+    );
+  }
+
+  if (
+    vehicleType === "car"
+  ) {
+    return (
+      <Car
+        size={size}
+        color={color}
+        strokeWidth={2.4}
+      />
+    );
+  }
+
+  return (
+    <PersonStanding
+      size={size}
+      color={color}
+      strokeWidth={2.4}
+    />
+  );
+}
+
 function getDriver(location: DriverLocation) {
   if (typeof location.driver === "string") {
     return null;
@@ -683,11 +755,7 @@ function getDriver(location: DriverLocation) {
   return location.driver;
 }
 
-function getDriverInitial(name?: string | null) {
-  const clean = name?.trim();
 
-  return clean ? clean.charAt(0).toUpperCase() : "D";
-}
 
 const styles = StyleSheet.create({
   container: {
@@ -1280,4 +1348,14 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.65,
   },
+  driverVehicleType: {
+  marginTop: 1,
+
+  fontSize: 7,
+
+  fontWeight: "700",
+
+  color:
+    COLORS.secondary,
+},
 });

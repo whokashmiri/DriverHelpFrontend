@@ -1,5 +1,7 @@
 export type DriverWorkStatus = "working" | "not_started";
-
+export type VehicleType =
+  | "car"
+  | "bike";
 export interface Driver {
   id?: string;
   _id?: string;
@@ -7,6 +9,7 @@ export interface Driver {
   iqamaId: string;
   name: string;
   phone?: string | null;
+  vehicleType:VehicleType;
 
   role: "driver";
 

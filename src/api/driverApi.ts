@@ -1,54 +1,67 @@
 import { api } from "./client";
 
-export interface Driver {
-  id?: string;
-  _id?: string;
-
-  iqamaId: string;
-  name: string;
-
-  phone?: string | null;
-
-  role: "driver";
-
-  isActive: boolean;
-
-  lastLoginAt?: string | null;
-  createdAt?: string;
-}
+import type {
+  Driver,
+  VehicleType
+} from "../types/driver";
 
 export interface CreateDriverPayload {
   iqamaId: string;
   name: string;
   password: string;
+
   phone?: string;
+
+  vehicleType:
+    VehicleType;
 }
 
 export interface UpdateDriverPayload {
   name?: string;
   iqamaId?: string;
-  phone?: string | null;
+
+  phone?:
+    | string
+    | null;
+
   password?: string;
+
+  vehicleType?:
+    VehicleType;
 }
 
 export async function createDriver(
-  payload: CreateDriverPayload,
+  payload:
+    CreateDriverPayload,
 ) {
-  const response = await api.post<{
-    success: boolean;
-    message: string;
-    driver: Driver;
-  }>("/drivers", payload);
+  const response =
+    await api.post<{
+      success: boolean;
+      message: string;
+      driver: Driver;
+    }>(
+      "/drivers",
+      payload,
+    );
 
   return response.data;
 }
 
 export async function getMyDrivers() {
-  const response = await api.get<{
-    success: boolean;
-    count: number;
-    drivers: Driver[];
-  }>("/drivers");
+  const response =
+    await api.get<{
+      success: boolean;
+
+      count: number;
+
+      workingCount?: number;
+
+      notWorkingCount?: number;
+
+      drivers: Driver[];
+    }>(
+      "/drivers",
+    );
 
   return response.data;
 }
