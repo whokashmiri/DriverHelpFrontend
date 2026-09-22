@@ -259,6 +259,8 @@
     "iqamaPlaceholder": "Enter Iqama ID",
     "phonePlaceholder": "Enter phone number",
     "passwordPlaceholder": "Minimum 6 characters",
+    "shortName":"Short Name",
+    "shortNamePlaceholder":"Ahmed",
 
     "createDriver": "Create Driver",
 

@@ -764,11 +764,11 @@ function FormField({
           {label}
         </Text>
 
-        {optional && (
+        {/* {optional && (
           <Text style={styles.optional}>
             {t("common.optional", "Optional")}
           </Text>
-        )}
+        )} */}
       </View>
 
       <TextInput
