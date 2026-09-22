@@ -2,19 +2,29 @@ import { io, Socket } from "socket.io-client";
 
 import { getToken } from "../api/client";
 
-const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
+// const SOCKET_URL =
+//   "https://driverhelp.167.71.231.64.nip.io";
 
-// For local development:
-// const SOCKET_URL = "http://192.168.0.138:9000";
+/*
+ * Local development:
+ */
+const SOCKET_URL = "http://192.168.0.138:9000";
+
+const LOCATION_ACK_TIMEOUT_MS = 8000;
 
 let socket: Socket | null = null;
 
+let connectingPromise: Promise<Socket> | null = null;
+
 export interface DriverLiveLocationPayload {
   latitude: number;
+
   longitude: number;
 
   accuracy?: number | null;
+
   speed?: number | null;
+
   heading?: number | null;
 }
 
@@ -22,10 +32,13 @@ export interface DriverLiveLocationUpdate {
   driverId: string;
 
   latitude: number;
+
   longitude: number;
 
   accuracy: number | null;
+
   speed: number | null;
+
   heading: number | null;
 
   recordedAt: string;
@@ -39,6 +52,7 @@ export interface LocationAcknowledgement {
   success: boolean;
 
   recordedAt?: string;
+
   locationId?: string;
 
   message?: string;
@@ -55,6 +69,12 @@ function createSocket() {
 
   socket = io(SOCKET_URL, {
     autoConnect: false,
+
+    /*
+     * Prefer websocket for
+     * live location.
+     */
+    transports: ["websocket"],
 
     reconnection: true,
 
@@ -79,33 +99,78 @@ function createSocket() {
     console.log("[Socket] Disconnected:", reason);
   });
 
+  socket.io.on("reconnect", (attempt) => {
+    console.log("[Socket] Reconnected:", attempt);
+  });
+
   return socket;
 }
 
+/*
+ * CONNECT SOCKET
+ */
 export async function connectSocket() {
-  const token = await getToken();
-
-  if (!token) {
-    throw new Error("Cannot connect socket without authentication token");
-  }
-
   const instance = createSocket();
 
-  instance.auth = {
-    token,
-  };
-
-  if (!instance.connected) {
-    instance.connect();
+  if (instance.connected) {
+    return instance;
   }
 
-  return instance;
+  /*
+   * Avoid multiple simultaneous
+   * connection attempts.
+   */
+  if (connectingPromise) {
+    return connectingPromise;
+  }
+
+  connectingPromise = (async () => {
+    const token = await getToken();
+
+    if (!token) {
+      throw new Error("Cannot connect socket without authentication token");
+    }
+
+    instance.auth = {
+      token,
+    };
+
+    return new Promise<Socket>((resolve, reject) => {
+      const handleConnect = () => {
+        cleanup();
+
+        resolve(instance);
+      };
+
+      const handleError = (error: Error) => {
+        cleanup();
+
+        reject(error);
+      };
+
+      const cleanup = () => {
+        instance.off("connect", handleConnect);
+
+        instance.off("connect_error", handleError);
+      };
+
+      instance.once("connect", handleConnect);
+
+      instance.once("connect_error", handleError);
+
+      instance.connect();
+    });
+  })();
+
+  try {
+    return await connectingPromise;
+  } finally {
+    connectingPromise = null;
+  }
 }
 
-/**
- * Disconnect Socket.IO.
- *
- * Call during logout.
+/*
+ * LOGOUT
  */
 export function disconnectSocket() {
   if (!socket) {
@@ -114,23 +179,25 @@ export function disconnectSocket() {
 
   socket.removeAllListeners();
 
+  socket.io.removeAllListeners();
+
   socket.disconnect();
 
   socket = null;
+
+  connectingPromise = null;
 }
 
-/**
- * Whether socket currently has an active
- * connection to the backend.
+/*
+ * CONNECTION STATUS
  */
 export function isSocketConnected() {
   return socket?.connected === true;
 }
 
-/**
- * DRIVER
- *
- * Send driver's current GPS position.
+/*
+ * DRIVER:
+ * SEND LIVE LOCATION
  */
 export function emitDriverLocation(
   payload: DriverLiveLocationPayload,
@@ -142,10 +209,40 @@ export function emitDriverLocation(
       return;
     }
 
+    let finished = false;
+
+    /*
+     * Prevent a lost acknowledgement
+     * from keeping this Promise alive.
+     */
+    const timeout = setTimeout(
+      () => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+
+        reject(new Error("Location acknowledgement timed out"));
+      },
+
+      LOCATION_ACK_TIMEOUT_MS,
+    );
+
     socket.emit(
       "driver:location",
+
       payload,
+
       (response: LocationAcknowledgement) => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+
+        clearTimeout(timeout);
+
         if (!response) {
           reject(new Error("No location acknowledgement received"));
 
@@ -164,12 +261,9 @@ export function emitDriverLocation(
   });
 }
 
-/**
- * SUPERVISOR
- *
- * Listen for live driver location updates.
- *
- * Returns cleanup function.
+/*
+ * SUPERVISOR:
+ * LIVE LOCATION LISTENER
  */
 export function onDriverLocationUpdate(
   callback: (location: DriverLiveLocationUpdate) => void,
@@ -183,10 +277,9 @@ export function onDriverLocationUpdate(
   };
 }
 
-/**
- * DRIVER
- *
- * Listen for server-side location errors.
+/*
+ * DRIVER:
+ * SERVER LOCATION ERROR
  */
 export function onDriverLocationError(
   callback: (error: { message: string }) => void,
@@ -200,10 +293,8 @@ export function onDriverLocationError(
   };
 }
 
-/**
- * Listen for socket connection.
- *
- * Returns cleanup function.
+/*
+ * CONNECTION LISTENERS
  */
 export function onSocketConnect(callback: () => void) {
   const instance = createSocket();
@@ -215,11 +306,6 @@ export function onSocketConnect(callback: () => void) {
   };
 }
 
-/**
- * Listen for socket disconnect.
- *
- * Returns cleanup function.
- */
 export function onSocketDisconnect(callback: (reason: string) => void) {
   const instance = createSocket();
 
@@ -230,11 +316,6 @@ export function onSocketDisconnect(callback: (reason: string) => void) {
   };
 }
 
-/**
- * Authentication / connection errors.
- *
- * Useful when JWT has expired or user was disabled.
- */
 export function onSocketConnectError(callback: (error: Error) => void) {
   const instance = createSocket();
 

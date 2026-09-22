@@ -2,33 +2,33 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
+import { getMyDrivers } from "../../api/driverApi";
+
 import { router } from "expo-router";
+
 import { useTranslation } from "react-i18next";
 
 import { Camera, Map, Marker } from "@maplibre/maplibre-react-native";
+
+import { Bike, Car, PersonStanding } from "lucide-react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 
 import { getMyDriversLocations } from "../../api/locationApi";
 
 import { onDriverLocationUpdate } from "../../socket/socket";
-import {
-  Bike,
-  Car,
-  PersonStanding,
-} from "lucide-react-native";
 
 import type {
   DriverLiveLocationUpdate,
   DriverLocation,
 } from "../../types/location";
-
 
 import { getErrorMessage } from "../../utils";
 
@@ -51,20 +51,25 @@ const COLORS = {
 
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
-const DEFAULT_CENTER: [number, number] = [
-  46.6753, // longitude
-  24.7136, // latitude
-];
+const DEFAULT_CENTER: [number, number] = [46.6753, 24.7136];
 
 const DEFAULT_ZOOM = 10;
 
 export default function LiveMapScreen() {
   const { t } = useTranslation();
 
-
   const cameraRef = useRef<any>(null);
 
   const [locations, setLocations] = useState<DriverLocation[]>([]);
+
+  /*
+   * Socket is the source of truth
+   * for the driver's current working
+   * status once live updates arrive.
+   */
+  const [liveWorkingStatus, setLiveWorkingStatus] = useState<
+    Record<string, boolean>
+  >({});
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -72,19 +77,40 @@ export default function LiveMapScreen() {
 
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
-  /*
-   * Prevent fitting before the map
-   * has actually finished loading.
-   */
   const [mapReady, setMapReady] = useState(false);
 
+  /*
+   * INITIAL LOCATION LOAD
+   */
   const loadLocations = useCallback(async () => {
     try {
       setError(null);
 
-      const response = await getMyDriversLocations();
+      const [locationResponse, driversResponse] = await Promise.all([
+        getMyDriversLocations(),
+        getMyDrivers(),
+      ]);
 
-      setLocations(response?.locations ?? []);
+      setLocations(locationResponse?.locations ?? []);
+
+      /*
+       * Initialize working status
+       * from the exact same driver API
+       * used by SupervisorHomeScreen.
+       */
+      const initialStatus: Record<string, boolean> = {};
+
+      for (const driver of driversResponse.drivers ?? []) {
+        const id = driver._id ?? driver.id;
+
+        if (!id) {
+          continue;
+        }
+
+        initialStatus[id] = driver.workStatus === "working";
+      }
+
+      setLiveWorkingStatus(initialStatus);
     } catch (err) {
       setError(
         getErrorMessage(
@@ -97,31 +123,38 @@ export default function LiveMapScreen() {
     }
   }, [t]);
 
-  /*
-   * Initial API load.
-   */
   useEffect(() => {
     void loadLocations();
   }, [loadLocations]);
 
   /*
-   * Live socket updates.
+   * LIVE SOCKET UPDATES
    */
   useEffect(() => {
     const cleanup = onDriverLocationUpdate(
       (update: DriverLiveLocationUpdate) => {
-        setLocations((current) => {
-          const index = current.findIndex((item) => {
-            const driverId = getDriverId(item);
+        /*
+         * Keep latest active-shift
+         * status separately.
+         */
+        setLiveWorkingStatus((current) => ({
+          ...current,
 
-            return driverId === update.driverId;
-          });
+          [update.driverId]: update.isWorking,
+        }));
+
+        setLocations((current) => {
+          const index = current.findIndex(
+            (item) => getDriverId(item) === update.driverId,
+          );
 
           /*
-           * Driver was not in the current API result.
+           * Driver has no cached
+           * REST location yet.
            *
-           * Refresh silently so the complete driver
-           * object can be retrieved.
+           * Reload so we get name,
+           * shortName, phone,
+           * profile picture etc.
            */
           if (index === -1) {
             void loadLocations();
@@ -135,10 +168,13 @@ export default function LiveMapScreen() {
             ...next[index],
 
             latitude: update.latitude,
+
             longitude: update.longitude,
 
             accuracy: update.accuracy,
+
             speed: update.speed,
+
             heading: update.heading,
 
             recordedAt: update.recordedAt,
@@ -153,45 +189,35 @@ export default function LiveMapScreen() {
   }, [loadLocations]);
 
   /*
-   * Normalize coordinates.
-   *
-   * This is important because API/DB values
-   * may arrive as strings.
+   * NORMALIZE GPS COORDINATES
    */
   const validLocations = useMemo(() => {
     return locations
       .map((item) => {
         const latitude = Number(item.latitude);
+
         const longitude = Number(item.longitude);
 
         return {
           ...item,
+
           latitude,
           longitude,
         };
       })
-      .filter((item) => {
-        return (
+      .filter(
+        (item) =>
           Number.isFinite(item.latitude) &&
           Number.isFinite(item.longitude) &&
           item.latitude >= -90 &&
           item.latitude <= 90 &&
           item.longitude >= -180 &&
-          item.longitude <= 180
-        );
-      });
+          item.longitude <= 180,
+      );
   }, [locations]);
 
   /*
-   * Initial map position.
-   *
-   * MapLibre coordinates are always:
-   *
-   * [longitude, latitude]
-   *
-   * NOT:
-   *
-   * [latitude, longitude]
+   * MAP INITIAL CENTER
    */
   const initialCenter = useMemo<[number, number]>(() => {
     if (validLocations.length === 0) {
@@ -202,7 +228,7 @@ export default function LiveMapScreen() {
   }, [validLocations]);
 
   /*
-   * Fit drivers whenever location data changes.
+   * FIT ON INITIAL LOAD / DATA
    */
   useEffect(() => {
     if (!mapReady || validLocations.length === 0) {
@@ -214,16 +240,13 @@ export default function LiveMapScreen() {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [mapReady, validLocations]);
+  }, [mapReady, validLocations.length]);
 
   const fitAllDrivers = useCallback(() => {
     if (!cameraRef.current || validLocations.length === 0) {
       return;
     }
 
-    /*
-     * One driver.
-     */
     if (validLocations.length === 1) {
       const location = validLocations[0];
 
@@ -238,30 +261,24 @@ export default function LiveMapScreen() {
       return;
     }
 
-    /*
-     * Multiple drivers.
-     *
-     * Calculate geographic bounds.
-     */
     let west = validLocations[0].longitude;
+
     let east = validLocations[0].longitude;
 
     let south = validLocations[0].latitude;
+
     let north = validLocations[0].latitude;
 
     for (const location of validLocations) {
       west = Math.min(west, location.longitude);
+
       east = Math.max(east, location.longitude);
 
       south = Math.min(south, location.latitude);
+
       north = Math.max(north, location.latitude);
     }
 
-    /*
-     * MapLibre fitBounds format:
-     *
-     * [west, south, east, north]
-     */
     cameraRef.current.fitBounds?.(
       [west, south, east, north],
       {
@@ -289,9 +306,8 @@ export default function LiveMapScreen() {
   return (
     <AppScreen>
       <View style={styles.container}>
-        {/*
-         * HEADER
-         */}
+        {/* HEADER */}
+
         <View style={styles.topBar}>
           <Pressable
             onPress={() => router.back()}
@@ -339,12 +355,8 @@ export default function LiveMapScreen() {
             <Map
               style={styles.map}
               mapStyle={MAP_STYLE_URL}
-              onDidFinishLoadingMap={() => {
-                setMapReady(true);
-              }}
-              onPress={() => {
-                setSelectedDriverId(null);
-              }}
+              onDidFinishLoadingMap={() => setMapReady(true)}
+              onPress={() => setSelectedDriverId(null)}
             >
               <Camera
                 ref={cameraRef}
@@ -357,9 +369,6 @@ export default function LiveMapScreen() {
                 maxZoom={19}
               />
 
-              {/*
-               * DRIVER MARKERS
-               */}
               {validLocations.map((location) => {
                 const driverId = getDriverId(location);
 
@@ -371,6 +380,12 @@ export default function LiveMapScreen() {
 
                 const selected = selectedDriverId === driverId;
 
+                const isWorking = getDriverWorkingStatus(
+                  driverId,
+                  driver,
+                  liveWorkingStatus,
+                );
+
                 return (
                   <Marker
                     key={driverId}
@@ -378,10 +393,6 @@ export default function LiveMapScreen() {
                     lngLat={[location.longitude, location.latitude]}
                     anchor="bottom"
                     onPress={(event) => {
-                      /*
-                       * Prevent map press from immediately
-                       * clearing the selected marker.
-                       */
                       event.stopPropagation?.();
 
                       setSelectedDriverId(driverId);
@@ -391,47 +402,61 @@ export default function LiveMapScreen() {
                       <View
                         style={[
                           styles.markerLabel,
+
                           selected && styles.markerLabelSelected,
+
+                          !isWorking && styles.markerLabelInactive,
                         ]}
                       >
-                      <View
-  style={[
-    styles.marker,
+                        {/* PHOTO / AVATAR */}
 
-    selected &&
-      styles.markerSelected,
-  ]}
->
-  <DriverVehicleIcon
-    vehicleType={
-      driver?.vehicleType
-    }
-    size={17}
-    color={COLORS.white}
-  />
-</View>
+                        <DriverAvatar
+                          profilePictureUrl={driver?.profilePicture?.url}
+                          size={34}
+                          isWorking={isWorking}
+                        />
+
+                        {/* NAME + PHONE */}
 
                         <View style={styles.markerDriverInfo}>
                           <Text
                             numberOfLines={1}
-                            style={styles.markerDriverName}
+                            style={[
+                              styles.markerDriverName,
+
+                              !isWorking && styles.inactiveMainText,
+                            ]}
                           >
-                            {driver?.name ?? t("drivers.driver", "Driver")}
+                            {getDriverDisplayName(
+                              driver,
+                              t("drivers.driver", "Driver"),
+                            )}
                           </Text>
 
-                          <Text
-                            numberOfLines={1}
-                            style={styles.markerDriverIqama}
-                          >
-                            {driver?.iqamaId ?? "-"}
-                          </Text>
+                          <View style={styles.phoneVehicleContainer}>
+                            <Text
+                              numberOfLines={1}
+                              style={styles.markerDriverPhone}
+                            >
+                              {driver?.phone ?? "-"}
+                            </Text>
+
+                            <VehicleBadge
+                              vehicleType={driver?.vehicleType}
+                              isWorking={isWorking}
+                              compact
+                            />
+                          </View>
                         </View>
                       </View>
 
                       <View
                         style={[
                           styles.markerPointer,
+
                           selected && styles.markerPointerSelected,
+
+                          !isWorking && styles.markerPointerInactive,
                         ]}
                       />
                     </View>
@@ -440,9 +465,8 @@ export default function LiveMapScreen() {
               })}
             </Map>
 
-            {/*
-             * LIVE STATUS
-             */}
+            {/* LIVE BADGE */}
+
             <View pointerEvents="none" style={styles.liveBadge}>
               <View style={styles.liveDot} />
 
@@ -451,9 +475,8 @@ export default function LiveMapScreen() {
               </Text>
             </View>
 
-            {/*
-             * SHOW ALL DRIVERS
-             */}
+            {/* SHOW ALL */}
+
             {validLocations.length > 0 && (
               <Pressable
                 onPress={fitAllDrivers}
@@ -469,9 +492,6 @@ export default function LiveMapScreen() {
               </Pressable>
             )}
 
-            {/*
-             * API failed but old data exists.
-             */}
             {!!error && validLocations.length > 0 && (
               <Pressable
                 onPress={() => void loadLocations()}
@@ -483,9 +503,6 @@ export default function LiveMapScreen() {
               </Pressable>
             )}
 
-            {/*
-             * NO GPS LOCATIONS
-             */}
             {validLocations.length === 0 && (
               <View pointerEvents="none" style={styles.emptyCard}>
                 <Text style={styles.emptyTitle}>
@@ -501,22 +518,20 @@ export default function LiveMapScreen() {
               </View>
             )}
 
-            {/*
-             * SELECTED DRIVER CARD
-             */}
+            {/* SELECTED DRIVER */}
+
             {selectedLocation && (
               <DriverLocationCard
                 location={selectedLocation}
+                isWorking={getDriverWorkingStatus(
+                  getDriverId(selectedLocation),
+                  getDriver(selectedLocation),
+                  liveWorkingStatus,
+                )}
                 onClose={() => setSelectedDriverId(null)}
               />
             )}
 
-            {/*
-             * Attribution.
-             *
-             * The demo MapLibre style also
-             * contains OpenStreetMap data.
-             */}
             <View pointerEvents="none" style={styles.attribution}>
               <Text style={styles.attributionText}>
                 © OpenStreetMap contributors
@@ -529,11 +544,17 @@ export default function LiveMapScreen() {
   );
 }
 
+/*
+ * SELECTED DRIVER CARD
+ */
 function DriverLocationCard({
   location,
+  isWorking,
   onClose,
 }: {
   location: DriverLocation;
+
+  isWorking: boolean;
 
   onClose: () => void;
 }) {
@@ -546,50 +567,70 @@ function DriverLocationCard({
   return (
     <View style={styles.driverCard}>
       <View style={styles.driverCardTop}>
-       <View
-  style={
-    styles.driverAvatar
-  }
->
-  <DriverVehicleIcon
-    vehicleType={
-      driver?.vehicleType
-    }
-    size={19}
-    color={COLORS.white}
-  />
-</View>
+        <DriverAvatar
+          profilePictureUrl={driver?.profilePicture?.url}
+          size={40}
+          isWorking={isWorking}
+        />
 
         <View style={styles.driverInfo}>
-          <Text numberOfLines={1} style={styles.driverName}>
-            {driver?.name ?? t("drivers.driver", "Driver")}
-          </Text>
-
-          <Text numberOfLines={1} style={styles.driverSub}>
-            {driver?.iqamaId ?? "-"}
-          </Text>
+          {/* SHORT NAME */}
 
           <Text
-  numberOfLines={1}
-  style={
-    styles.driverVehicleType
-  }
->
-  {driver?.vehicleType === "car"
-    ? t(
-        "drivers.car",
-        "Car",
-      )
-    : driver?.vehicleType === "bike"
-      ? t(
-          "drivers.bike",
-          "Bike",
-        )
-      : t(
-          "drivers.walking",
-          "Walking",
-        )}
-</Text>
+            numberOfLines={1}
+            style={[styles.driverName, !isWorking && styles.inactiveMainText]}
+          >
+            {getDriverDisplayName(driver, t("drivers.driver", "Driver"))}
+          </Text>
+
+          {/* FULL NAME */}
+
+          {!!driver?.shortName && !!driver?.name && (
+            <Text numberOfLines={1} style={styles.driverFullName}>
+              {driver.name}
+            </Text>
+          )}
+
+          {/* PHONE */}
+
+          <Text numberOfLines={1} style={styles.driverSub}>
+            {driver?.phone ?? "-"}
+          </Text>
+
+          {/* VEHICLE */}
+
+          <VehicleBadge
+            vehicleType={driver?.vehicleType}
+            isWorking={isWorking}
+          />
+        </View>
+
+        <View
+          style={[
+            styles.workingBadge,
+
+            isWorking ? styles.workingBadgeActive : styles.workingBadgeInactive,
+          ]}
+        >
+          <View
+            style={[
+              styles.workingDot,
+
+              isWorking ? styles.workingDotActive : styles.workingDotInactive,
+            ]}
+          />
+
+          <Text
+            style={[
+              styles.workingText,
+
+              isWorking ? styles.workingTextActive : styles.workingTextInactive,
+            ]}
+          >
+            {isWorking
+              ? t("drivers.working", "Working")
+              : t("drivers.notWorking", "Offline")}
+          </Text>
         </View>
 
         <Pressable onPress={onClose} style={styles.closeButton}>
@@ -647,6 +688,197 @@ function DriverLocationCard({
   );
 }
 
+/*
+ * DRIVER AVATAR
+ */
+function DriverAvatar({
+  profilePictureUrl,
+  size,
+  isWorking,
+}: {
+  profilePictureUrl?: string | null;
+
+  size: number;
+
+  isWorking: boolean;
+}) {
+  if (profilePictureUrl) {
+    return (
+      <View
+        style={[
+          styles.avatarContainer,
+          {
+            width: size,
+            height: size,
+
+            // borderRadius: size / 2,
+          },
+
+          !isWorking && styles.avatarInactive,
+        ]}
+      >
+        <Image
+          source={{
+            uri: profilePictureUrl,
+          }}
+          style={styles.avatarImage}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.avatarContainer,
+
+        styles.avatarFallback,
+
+        {
+          width: size,
+          height: size,
+
+          borderRadius: 3,
+        },
+
+        !isWorking && styles.avatarFallbackInactive,
+      ]}
+    >
+      <PersonStanding
+        size={size * 0.5}
+        color={isWorking ? COLORS.white : COLORS.white}
+        strokeWidth={2.3}
+      />
+    </View>
+  );
+}
+
+/*
+ * VEHICLE BADGE
+ */
+function VehicleBadge({
+  vehicleType,
+  isWorking,
+  compact = false,
+}: {
+  vehicleType?: string | null;
+
+  isWorking: boolean;
+
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+
+  const iconColor = isWorking ? COLORS.secondary : COLORS.muted;
+
+  const label =
+    vehicleType === "car"
+      ? t("drivers.car", "Car")
+      : vehicleType === "bike"
+        ? t("drivers.bike", "Bike")
+        : t("drivers.walking", "Walking");
+
+  return (
+    <View
+      style={[
+        styles.vehicleBadge,
+
+        compact && styles.vehicleBadgeCompact,
+
+        !isWorking && styles.vehicleBadgeInactive,
+      ]}
+    >
+      <DriverVehicleIcon
+        vehicleType={vehicleType}
+        size={compact ? 10 : 12}
+        color={iconColor}
+      />
+
+      <Text
+        style={[
+          styles.vehicleBadgeText,
+
+          !isWorking && styles.vehicleBadgeTextInactive,
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function DriverVehicleIcon({
+  vehicleType,
+  size = 17,
+  color = COLORS.secondary,
+}: {
+  vehicleType?: string | null;
+
+  size?: number;
+
+  color?: string;
+}) {
+  if (vehicleType === "bike") {
+    return <Bike size={size} color={color} strokeWidth={2.4} />;
+  }
+
+  if (vehicleType === "car") {
+    return <Car size={size} color={color} strokeWidth={2.4} />;
+  }
+
+  return <PersonStanding size={size} color={color} strokeWidth={2.4} />;
+}
+
+function getDriverWorkingStatus(
+  driverId: string | null,
+  driver: any,
+  liveWorkingStatus: Record<string, boolean>,
+) {
+  if (
+    driverId &&
+    Object.prototype.hasOwnProperty.call(liveWorkingStatus, driverId)
+  ) {
+    return liveWorkingStatus[driverId];
+  }
+
+  /*
+   * Additional fallback if the
+   * location API ever includes it.
+   */
+  if (driver?.workStatus === "working") {
+    return true;
+  }
+
+  if (typeof driver?.isWorking === "boolean") {
+    return driver.isWorking;
+  }
+
+  return false;
+}
+function getDriverDisplayName(driver: any, fallback: string) {
+  return driver?.shortName?.trim() || driver?.name?.trim() || fallback;
+}
+
+function getDriverId(location: DriverLocation) {
+  if (typeof location.driver === "string") {
+    return location.driver;
+  }
+
+  return location.driver?._id ?? location.driver?._id ?? null;
+}
+
+function getDriver(location: DriverLocation) {
+  if (typeof location.driver === "string") {
+    return null;
+  }
+
+  return location.driver;
+}
+
+/*
+ * LOADING
+ */
 function LoadingState() {
   const { t } = useTranslation();
 
@@ -661,6 +893,9 @@ function LoadingState() {
   );
 }
 
+/*
+ * ERROR
+ */
 function ErrorState({
   error,
   onRetry,
@@ -695,68 +930,6 @@ function ErrorState({
   );
 }
 
-function getDriverId(location: DriverLocation) {
-  if (typeof location.driver === "string") {
-    return location.driver;
-  }
-
-  return location.driver?._id ?? null;
-}
-
-function DriverVehicleIcon({
-  vehicleType,
-  size = 17,
-  color = COLORS.white,
-}: {
-  vehicleType?: string | null;
-
-  size?: number;
-
-  color?: string;
-}) {
-  if (
-    vehicleType === "bike"
-  ) {
-    return (
-      <Bike
-        size={size}
-        color={color}
-        strokeWidth={2.4}
-      />
-    );
-  }
-
-  if (
-    vehicleType === "car"
-  ) {
-    return (
-      <Car
-        size={size}
-        color={color}
-        strokeWidth={2.4}
-      />
-    );
-  }
-
-  return (
-    <PersonStanding
-      size={size}
-      color={color}
-      strokeWidth={2.4}
-    />
-  );
-}
-
-function getDriver(location: DriverLocation) {
-  if (typeof location.driver === "string") {
-    return null;
-  }
-
-  return location.driver;
-}
-
-
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -764,6 +937,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.light,
   },
 
+  /*
+   * HEADER
+   */
   topBar: {
     minHeight: 58,
 
@@ -791,6 +967,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     backgroundColor: COLORS.light,
@@ -798,6 +975,7 @@ const styles = StyleSheet.create({
 
   backText: {
     fontSize: 18,
+
     fontWeight: "700",
 
     color: COLORS.primary,
@@ -809,6 +987,7 @@ const styles = StyleSheet.create({
 
   title: {
     fontSize: 14,
+
     fontWeight: "800",
 
     color: COLORS.primary,
@@ -824,16 +1003,19 @@ const styles = StyleSheet.create({
 
   countBadge: {
     minWidth: 54,
+
     height: 34,
 
     paddingHorizontal: 8,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 9,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     backgroundColor: COLORS.light,
@@ -841,6 +1023,7 @@ const styles = StyleSheet.create({
 
   countValue: {
     fontSize: 11,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -850,11 +1033,15 @@ const styles = StyleSheet.create({
     marginTop: -1,
 
     fontSize: 6,
+
     fontWeight: "700",
 
     color: COLORS.muted,
   },
 
+  /*
+   * MAP
+   */
   mapContainer: {
     flex: 1,
 
@@ -869,6 +1056,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.light,
   },
 
+  /*
+   * TOP MAP CONTROLS
+   */
   liveBadge: {
     position: "absolute",
 
@@ -880,11 +1070,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
 
     flexDirection: "row",
+
     alignItems: "center",
 
     borderRadius: 9,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     backgroundColor: "rgba(255,255,255,0.95)",
@@ -892,6 +1084,7 @@ const styles = StyleSheet.create({
 
   liveDot: {
     width: 7,
+
     height: 7,
 
     marginRight: 5,
@@ -903,6 +1096,7 @@ const styles = StyleSheet.create({
 
   liveText: {
     fontSize: 8,
+
     fontWeight: "800",
 
     color: COLORS.primary,
@@ -919,6 +1113,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 9,
@@ -928,30 +1123,38 @@ const styles = StyleSheet.create({
 
   fitButtonText: {
     fontSize: 8,
+
     fontWeight: "800",
 
     color: COLORS.white,
   },
 
+  /*
+   * MARKER
+   */
   markerWrapper: {
     alignItems: "center",
   },
 
   markerLabel: {
-    minWidth: 118,
-    maxWidth: 165,
+    minWidth: 132,
 
-    minHeight: 42,
+    maxWidth: 185,
+
+    minHeight: 48,
 
     flexDirection: "row",
+
     alignItems: "center",
 
-    paddingHorizontal: 5,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
 
-    borderRadius: 10,
+    paddingVertical: 5,
+
+    borderRadius: 11,
 
     borderWidth: 2,
+
     borderColor: COLORS.white,
 
     backgroundColor: COLORS.white,
@@ -964,34 +1167,15 @@ const styles = StyleSheet.create({
 
     transform: [
       {
-        scale: 1.05,
+        scale: 1.04,
       },
     ],
   },
 
-  marker: {
-    width: 32,
-    height: 32,
+  markerLabelInactive: {
+    borderColor: COLORS.border,
 
-    flexShrink: 0,
-
-    borderRadius: 16,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: COLORS.secondary,
-  },
-
-  markerSelected: {
-    backgroundColor: COLORS.primary,
-  },
-
-  markerText: {
-    fontSize: 10,
-    fontWeight: "900",
-
-    color: COLORS.white,
+    opacity: 0.88,
   },
 
   markerDriverInfo: {
@@ -1003,13 +1187,14 @@ const styles = StyleSheet.create({
   },
 
   markerDriverName: {
-    fontSize: 8,
+    fontSize: 9,
+
     fontWeight: "900",
 
     color: COLORS.primary,
   },
 
-  markerDriverIqama: {
+  markerDriverPhone: {
     marginTop: 1,
 
     fontSize: 7,
@@ -1019,15 +1204,19 @@ const styles = StyleSheet.create({
 
   markerPointer: {
     width: 0,
+
     height: 0,
 
     marginTop: -1,
 
     borderLeftWidth: 5,
+
     borderRightWidth: 5,
+
     borderTopWidth: 7,
 
     borderLeftColor: "transparent",
+
     borderRightColor: "transparent",
 
     borderTopColor: COLORS.white,
@@ -1037,11 +1226,112 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.primary,
   },
 
+  markerPointerInactive: {
+    borderTopColor: COLORS.border,
+  },
+
+  /*
+   * AVATAR
+   */
+  avatarContainer: {
+    flexShrink: 0,
+
+    overflow: "hidden",
+
+    alignItems: "center",
+
+    justifyContent: "center",
+
+    borderWidth: 2,
+
+    borderColor: COLORS.success,
+
+    backgroundColor: COLORS.primary,
+  },
+
+  avatarImage: {
+    width: "100%",
+
+    height: "100%",
+  },
+
+  avatarFallback: {
+    backgroundColor: COLORS.primary,
+  },
+
+  avatarInactive: {
+    borderColor: COLORS.muted,
+
+    opacity: 0.62,
+  },
+
+  avatarFallbackInactive: {
+    borderColor: COLORS.muted,
+
+    backgroundColor: COLORS.muted,
+  },
+
+  /*
+   * VEHICLE
+   */
+  vehicleBadge: {
+    alignSelf: "flex-start",
+
+    marginTop: 3,
+
+    minHeight: 20,
+
+    flexDirection: "row",
+
+    alignItems: "center",
+
+    gap: 4,
+
+    paddingHorizontal: 7,
+
+    paddingVertical: 3,
+
+    borderRadius: 999,
+
+    backgroundColor: COLORS.successBackground,
+  },
+
+  vehicleBadgeCompact: {
+    minHeight: 17,
+
+    marginTop: 2,
+
+    paddingHorizontal: 5,
+
+    paddingVertical: 2,
+  },
+
+  vehicleBadgeInactive: {
+    backgroundColor: "#ECEFEF",
+  },
+
+  vehicleBadgeText: {
+    fontSize: 7,
+
+    fontWeight: "800",
+
+    color: COLORS.secondary,
+  },
+
+  vehicleBadgeTextInactive: {
+    color: COLORS.muted,
+  },
+
+  /*
+   * DRIVER CARD
+   */
   driverCard: {
     position: "absolute",
 
     left: 10,
+
     right: 10,
+
     bottom: 30,
 
     padding: 10,
@@ -1049,6 +1339,7 @@ const styles = StyleSheet.create({
     borderRadius: 13,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     backgroundColor: COLORS.white,
@@ -1058,41 +1349,36 @@ const styles = StyleSheet.create({
 
   driverCardTop: {
     flexDirection: "row",
-    alignItems: "center",
-  },
-
-  driverAvatar: {
-    width: 34,
-    height: 34,
-
-    marginRight: 8,
-
-    borderRadius: 17,
 
     alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: COLORS.primary,
-  },
-
-  driverAvatarText: {
-    fontSize: 11,
-    fontWeight: "900",
-
-    color: COLORS.white,
   },
 
   driverInfo: {
     flex: 1,
 
     minWidth: 0,
+
+    marginLeft: 8,
   },
 
   driverName: {
-    fontSize: 11,
-    fontWeight: "800",
+    fontSize: 12,
+
+    fontWeight: "900",
 
     color: COLORS.primary,
+  },
+
+  inactiveMainText: {
+    color: COLORS.muted,
+  },
+
+  driverFullName: {
+    marginTop: 1,
+
+    fontSize: 8,
+
+    color: COLORS.secondary,
   },
 
   driverSub: {
@@ -1103,11 +1389,72 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
 
-  closeButton: {
-    width: 28,
-    height: 28,
+  /*
+   * WORKING BADGE
+   */
+  workingBadge: {
+    marginLeft: 6,
+
+    flexDirection: "row",
 
     alignItems: "center",
+
+    gap: 3,
+
+    paddingHorizontal: 6,
+
+    paddingVertical: 4,
+
+    borderRadius: 999,
+  },
+
+  workingBadgeActive: {
+    backgroundColor: COLORS.successBackground,
+  },
+
+  workingBadgeInactive: {
+    backgroundColor: "#ECEFEF",
+  },
+
+  workingDot: {
+    width: 5,
+
+    height: 5,
+
+    borderRadius: 3,
+  },
+
+  workingDotActive: {
+    backgroundColor: COLORS.success,
+  },
+
+  workingDotInactive: {
+    backgroundColor: COLORS.muted,
+  },
+
+  workingText: {
+    fontSize: 6,
+
+    fontWeight: "900",
+  },
+
+  workingTextActive: {
+    color: COLORS.success,
+  },
+
+  workingTextInactive: {
+    color: COLORS.muted,
+  },
+
+  closeButton: {
+    width: 27,
+
+    height: 27,
+
+    marginLeft: 5,
+
+    alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -1121,12 +1468,16 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
 
+  /*
+   * GPS CARD DETAILS
+   */
   locationRow: {
     minHeight: 43,
 
     marginTop: 8,
 
     flexDirection: "row",
+
     alignItems: "center",
 
     borderRadius: 9,
@@ -1160,6 +1511,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
 
     fontSize: 9,
+
     fontWeight: "800",
 
     color: COLORS.primary,
@@ -1171,6 +1523,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -1184,16 +1537,22 @@ const styles = StyleSheet.create({
 
   viewDriverText: {
     fontSize: 8,
+
     fontWeight: "800",
 
     color: COLORS.white,
   },
 
+  /*
+   * WARNING / EMPTY
+   */
   warningBadge: {
     position: "absolute",
 
     left: 10,
+
     right: 10,
+
     bottom: 30,
 
     minHeight: 30,
@@ -1201,6 +1560,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -1210,6 +1570,7 @@ const styles = StyleSheet.create({
 
   warningText: {
     fontSize: 8,
+
     fontWeight: "700",
 
     color: COLORS.error,
@@ -1219,7 +1580,9 @@ const styles = StyleSheet.create({
     position: "absolute",
 
     left: 24,
+
     right: 24,
+
     top: "38%",
 
     padding: 16,
@@ -1229,6 +1592,7 @@ const styles = StyleSheet.create({
     borderRadius: 13,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     backgroundColor: "rgba(255,255,255,0.96)",
@@ -1236,6 +1600,7 @@ const styles = StyleSheet.create({
 
   emptyTitle: {
     fontSize: 11,
+
     fontWeight: "800",
 
     color: COLORS.primary,
@@ -1247,6 +1612,7 @@ const styles = StyleSheet.create({
     maxWidth: 260,
 
     fontSize: 8,
+
     lineHeight: 13,
 
     textAlign: "center",
@@ -1258,9 +1624,11 @@ const styles = StyleSheet.create({
     position: "absolute",
 
     right: 5,
+
     bottom: 4,
 
     paddingHorizontal: 5,
+
     paddingVertical: 2,
 
     borderRadius: 3,
@@ -1274,12 +1642,16 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
 
+  /*
+   * STATES
+   */
   center: {
     flex: 1,
 
     paddingHorizontal: 20,
 
     alignItems: "center",
+
     justifyContent: "center",
   },
 
@@ -1305,6 +1677,7 @@ const styles = StyleSheet.create({
 
   errorTitle: {
     fontSize: 11,
+
     fontWeight: "800",
 
     color: COLORS.error,
@@ -1314,6 +1687,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
 
     fontSize: 8,
+
     lineHeight: 13,
 
     textAlign: "center",
@@ -1331,6 +1705,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -1340,6 +1715,7 @@ const styles = StyleSheet.create({
 
   retryText: {
     fontSize: 8,
+
     fontWeight: "800",
 
     color: COLORS.white,
@@ -1348,14 +1724,5 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.65,
   },
-  driverVehicleType: {
-  marginTop: 1,
-
-  fontSize: 7,
-
-  fontWeight: "700",
-
-  color:
-    COLORS.secondary,
-},
+  phoneVehicleContainer: {},
 });

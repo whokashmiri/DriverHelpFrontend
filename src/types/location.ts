@@ -1,4 +1,4 @@
-import {VehicleType} from "./driver"
+import { VehicleType } from "./driver";
 export interface LocationPayload {
   latitude: number;
   longitude: number;
@@ -16,10 +16,16 @@ export interface DriverLocation {
     | {
         _id: string;
         name?: string;
+        shortName?: string;
+
         iqamaId?: string;
         phone?: string | null;
-        vehicleType:VehicleType,
+        vehicleType: VehicleType;
         isActive?: boolean;
+        profilePicture?: {
+          url: string | null;
+          publicId: string | null;
+        } | null;
       };
 
   supervisor: string;
