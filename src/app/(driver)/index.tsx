@@ -19,13 +19,7 @@ import { useFocusEffect } from "expo-router";
 
 import { useTranslation } from "react-i18next";
 
-import {
-  ImagePlus,
-  MoreVertical,
-  Pencil,
-  Trash2,
-  X,
-} from "lucide-react-native";
+import { ImagePlus, Pencil, Trash2, X } from "lucide-react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 
@@ -261,58 +255,36 @@ export default function DriverHomeScreen() {
   /*
    * Live order timer.
    */
-useEffect(() => {
-  const pickupStart =
-    activeOrder?.pickupTime
-      ? new Date(
-          activeOrder.pickupTime,
-        ).getTime()
-      : uploadingPickup &&
-          pickupPhoto?.time
+  useEffect(() => {
+    const pickupStart = activeOrder?.pickupTime
+      ? new Date(activeOrder.pickupTime).getTime()
+      : uploadingPickup && pickupPhoto?.time
         ? pickupPhoto.time.getTime()
         : null;
 
-  if (!pickupStart) {
-    setOrderElapsedSeconds(0);
+    if (!pickupStart) {
+      setOrderElapsedSeconds(0);
 
-    return;
-  }
+      return;
+    }
 
-  const updateTimer = () => {
-    const elapsed =
-      Math.max(
+    const updateTimer = () => {
+      const elapsed = Math.max(
         0,
-        Math.floor(
-          (
-            Date.now() -
-            pickupStart
-          ) / 1000,
-        ),
+        Math.floor((Date.now() - pickupStart) / 1000),
       );
 
-    setOrderElapsedSeconds(
-      elapsed,
-    );
-  };
+      setOrderElapsedSeconds(elapsed);
+    };
 
-  updateTimer();
+    updateTimer();
 
-  const interval =
-    setInterval(
-      updateTimer,
-      1000,
-    );
+    const interval = setInterval(updateTimer, 1000);
 
-  return () => {
-    clearInterval(
-      interval,
-    );
-  };
-}, [
-  activeOrder,
-  uploadingPickup,
-  pickupPhoto?.time,
-]);
+    return () => {
+      clearInterval(interval);
+    };
+  }, [activeOrder, uploadingPickup, pickupPhoto?.time]);
 
   const handleStartShift = async () => {
     try {
@@ -418,62 +390,37 @@ useEffect(() => {
     }
   };
 
-const takeOrderPhoto = async (
-  type: "pickup" | "delivery",
-) => {
-  try {
-    setOrderError(null);
+  const takeOrderPhoto = async (type: "pickup" | "delivery") => {
+    try {
+      setOrderError(null);
 
-    if (
-      type === "pickup" &&
-      (activeOrder || uploadingPickup)
-    ) {
-      return;
-    }
+      if (type === "pickup" && (activeOrder || uploadingPickup)) {
+        return;
+      }
 
-    if (
-      type === "pickup" &&
-      !isWorking
-    ) {
-      setOrderError(
-        t(
-          "driver.startShiftFirst",
-          "Start your shift first",
-        ),
-      );
+      if (type === "pickup" && !isWorking) {
+        setOrderError(t("driver.startShiftFirst", "Start your shift first"));
 
-      return;
-    }
+        return;
+      }
 
-    if (
-      type === "delivery" &&
-      (!activeOrder || uploadingDelivery)
-    ) {
-      return;
-    }
+      if (type === "delivery" && (!activeOrder || uploadingDelivery)) {
+        return;
+      }
 
-    const permission =
-      await ImagePicker.requestCameraPermissionsAsync();
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
 
-    if (!permission.granted) {
-      Alert.alert(
-        t(
-          "common.permissionRequired",
-          "Permission Required",
-        ),
-        t(
-          "orders.cameraPermission",
-          "Camera permission is required.",
-        ),
-      );
+      if (!permission.granted) {
+        Alert.alert(
+          t("common.permissionRequired", "Permission Required"),
+          t("orders.cameraPermission", "Camera permission is required."),
+        );
 
-      return;
-    }
+        return;
+      }
 
-    const result =
-      await ImagePicker.launchCameraAsync({
-        mediaTypes:
-          ImagePicker.MediaTypeOptions.Images,
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
 
         allowsEditing: false,
 
@@ -484,80 +431,61 @@ const takeOrderPhoto = async (
          */
         quality: 0.8,
 
-        cameraType:
-          ImagePicker.CameraType.back,
+        cameraType: ImagePicker.CameraType.back,
       });
 
-    if (result.canceled) {
-      return;
-    }
+      if (result.canceled) {
+        return;
+      }
 
-    const asset =
-      result.assets?.[0];
+      const asset = result.assets?.[0];
 
-    if (!asset?.uri) {
+      if (!asset?.uri) {
+        setOrderError(
+          t("orders.photoFailed", "Unable to read captured photo."),
+        );
+
+        return;
+      }
+
+      const capturedPhoto: OrderPhotoInput = {
+        uri: asset.uri,
+        time: new Date(),
+      };
+
+      /*
+       * OPTIMISTIC UI
+       *
+       * Show the original local image immediately.
+       * Do not make the user wait for compression
+       * or network upload.
+       */
+      if (type === "pickup") {
+        setPickupPhoto(capturedPhoto);
+
+        setUploadingPickup(true);
+
+        void processPickupInBackground(capturedPhoto);
+
+        return;
+      }
+
+      setDeliveryPhoto(capturedPhoto);
+
+      setUploadingDelivery(true);
+
+      void processDeliveryInBackground(capturedPhoto);
+    } catch (error) {
       setOrderError(
-        t(
-          "orders.photoFailed",
-          "Unable to read captured photo.",
+        getErrorMessage(
+          error,
+          t("orders.photoFailed", "Unable to capture photo"),
         ),
       );
-
-      return;
     }
+  };
 
-    const capturedPhoto: OrderPhotoInput = {
-      uri: asset.uri,
-      time: new Date(),
-    };
-
-    /*
-     * OPTIMISTIC UI
-     *
-     * Show the original local image immediately.
-     * Do not make the user wait for compression
-     * or network upload.
-     */
-    if (type === "pickup") {
-      setPickupPhoto(
-        capturedPhoto,
-      );
-
-      setUploadingPickup(true);
-
-      void processPickupInBackground(
-        capturedPhoto,
-      );
-
-      return;
-    }
-
-    setDeliveryPhoto(
-      capturedPhoto,
-    );
-
-    setUploadingDelivery(true);
-
-    void processDeliveryInBackground(
-      capturedPhoto,
-    );
-  } catch (error) {
-    setOrderError(
-      getErrorMessage(
-        error,
-        t(
-          "orders.photoFailed",
-          "Unable to capture photo",
-        ),
-      ),
-    );
-  }
-};
-
- const processPickupInBackground =
-  async (
-    capturedPhoto: OrderPhotoInput,
-  ) => {
+  const processPickupInBackground = async (capturedPhoto: OrderPhotoInput) => {
     try {
       setOrderError(null);
 
@@ -565,11 +493,10 @@ const takeOrderPhoto = async (
        * STEP 1:
        * Compress local camera image.
        */
-      const compressedUri =
-        await compressOrderImage(
-          capturedPhoto.uri,
-          "pickup",
-        );
+      const compressedUri = await compressOrderImage(
+        capturedPhoto.uri,
+        "pickup",
+      );
 
       const compressedPhoto: OrderPhotoInput = {
         uri: compressedUri,
@@ -579,84 +506,54 @@ const takeOrderPhoto = async (
          * Compression time must NOT become
          * pickup time.
          */
-        time:
-          capturedPhoto.time,
+        time: capturedPhoto.time,
       };
 
       /*
        * Replace preview with compressed file.
        * UI remains visible throughout.
        */
-      setPickupPhoto(
-        compressedPhoto,
-      );
+      setPickupPhoto(compressedPhoto);
 
       /*
        * STEP 2:
        * Upload compressed image.
        */
-      const response =
-        await createPickupOrder({
-          pickupPhoto:
-            compressedPhoto,
+      const response = await createPickupOrder({
+        pickupPhoto: compressedPhoto,
 
-          notes:
-            orderNotes.trim() ||
-            undefined,
-        });
+        notes: orderNotes.trim() || undefined,
+      });
 
-      const createdOrder =
-        response.order;
+      const createdOrder = response.order;
 
-      setActiveOrder(
-        createdOrder,
-      );
+      setActiveOrder(createdOrder);
 
       setOrders((current) => [
         createdOrder,
 
-        ...current.filter(
-          (order) =>
-            order._id !==
-            createdOrder._id,
-        ),
+        ...current.filter((order) => order._id !== createdOrder._id),
       ]);
 
-      setOrderNotes(
-        createdOrder.notes ??
-          orderNotes,
-      );
+      setOrderNotes(createdOrder.notes ?? orderNotes);
 
       /*
        * Replace local compressed URI
        * with permanent server image URL.
        */
-      if (
-        createdOrder.pickupPhoto
-          ?.url
-      ) {
+      if (createdOrder.pickupPhoto?.url) {
         setPickupPhoto({
-          uri:
-            createdOrder
-              .pickupPhoto.url,
+          uri: createdOrder.pickupPhoto.url,
 
           time: safeDate(
-            createdOrder
-              .pickupPhoto
-              .takenAt ||
-              createdOrder
-                .pickupTime,
+            createdOrder.pickupPhoto.takenAt || createdOrder.pickupTime,
           ),
         });
       }
 
-      setDeliveryPhoto(
-        null,
-      );
+      setDeliveryPhoto(null);
 
-      setOrderElapsedSeconds(
-        0,
-      );
+      setOrderElapsedSeconds(0);
     } catch (error) {
       /*
        * Optimistic operation failed,
@@ -667,30 +564,21 @@ const takeOrderPhoto = async (
       setOrderError(
         getErrorMessage(
           error,
-          t(
-            "orders.pickupUploadFailed",
-            "Unable to save pickup photo",
-          ),
+          t("orders.pickupUploadFailed", "Unable to save pickup photo"),
         ),
       );
     } finally {
-      setUploadingPickup(
-        false,
-      );
+      setUploadingPickup(false);
     }
-  };;
+  };
 
-const processDeliveryInBackground =
-  async (
+  const processDeliveryInBackground = async (
     capturedPhoto: OrderPhotoInput,
   ) => {
-    const currentOrder =
-      activeOrder;
+    const currentOrder = activeOrder;
 
     if (!currentOrder?._id) {
-      setUploadingDelivery(
-        false,
-      );
+      setUploadingDelivery(false);
 
       return;
     }
@@ -702,54 +590,38 @@ const processDeliveryInBackground =
        * STEP 1:
        * Compress in background.
        */
-      const compressedUri =
-        await compressOrderImage(
-          capturedPhoto.uri,
-          "delivery",
-        );
+      const compressedUri = await compressOrderImage(
+        capturedPhoto.uri,
+        "delivery",
+      );
 
       const compressedPhoto: OrderPhotoInput = {
         uri: compressedUri,
 
-        time:
-          capturedPhoto.time,
+        time: capturedPhoto.time,
       };
 
-      setDeliveryPhoto(
-        compressedPhoto,
-      );
+      setDeliveryPhoto(compressedPhoto);
 
       /*
        * STEP 2:
        * Upload compressed file.
        */
-      const response =
-        await completeOrderDelivery({
-          orderId:
-            currentOrder._id,
+      const response = await completeOrderDelivery({
+        orderId: currentOrder._id,
 
-          deliveryPhoto:
-            compressedPhoto,
-        });
+        deliveryPhoto: compressedPhoto,
+      });
 
-      const completedOrder =
-        response.order;
+      const completedOrder = response.order;
 
       setOrders((current) => [
         completedOrder,
 
-        ...current.filter(
-          (order) =>
-            order._id !==
-            completedOrder._id,
-        ),
+        ...current.filter((order) => order._id !== completedOrder._id),
       ]);
 
-      setOrderElapsedSeconds(
-        completedOrder
-          .durationSeconds ??
-          0,
-      );
+      setOrderElapsedSeconds(completedOrder.durationSeconds ?? 0);
 
       /*
        * Only clear active order after
@@ -778,16 +650,11 @@ const processDeliveryInBackground =
       setOrderError(
         getErrorMessage(
           error,
-          t(
-            "orders.deliveryUploadFailed",
-            "Unable to complete delivery",
-          ),
+          t("orders.deliveryUploadFailed", "Unable to complete delivery"),
         ),
       );
     } finally {
-      setUploadingDelivery(
-        false,
-      );
+      setUploadingDelivery(false);
     }
   };
 
@@ -1240,7 +1107,10 @@ function InlineOrderCreator({
                 isBusy && styles.compactPhotoDisabled,
               ]}
             >
-              <MoreVertical size={17} color={COLORS.primary} />
+              <Text style={styles.cancelTitleInline}>
+                {t("conmon.cancel", "Cancel")}
+              </Text>
+              {/* <MoreVertical size={17} color={COLORS.primary} /> */}
             </Pressable>
           )}
         </View>
@@ -1350,48 +1220,28 @@ function CompactPhotoButton({
         pressed && !disabled && styles.compactPhotoPressed,
       ]}
     >
-    <View style={styles.compactPhotoPreview}>
-  {photo?.uri ? (
-    <>
-      <Image
-        source={{
-          uri: photo.uri,
-        }}
-        style={
-          styles.compactPhotoImage
-        }
-      />
+      <View style={styles.compactPhotoPreview}>
+        {photo?.uri ? (
+          <>
+            <Image
+              source={{
+                uri: photo.uri,
+              }}
+              style={styles.compactPhotoImage}
+            />
 
-      {loading && (
-        <View
-          style={
-            styles.photoUploadingOverlay
-          }
-        >
-          <ActivityIndicator
-            size="small"
-            color={
-              COLORS.white
-            }
-          />
-        </View>
-      )}
-    </>
-  ) : loading ? (
-    <ActivityIndicator
-      size="small"
-      color={COLORS.primary}
-    />
-  ) : (
-    <Text
-      style={
-        styles.compactPhotoPlus
-      }
-    >
-      +
-    </Text>
-  )}
-</View>
+            {loading && (
+              <View style={styles.photoUploadingOverlay}>
+                <ActivityIndicator size="small" color={COLORS.white} />
+              </View>
+            )}
+          </>
+        ) : loading ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+          <Text style={styles.compactPhotoPlus}>+</Text>
+        )}
+      </View>
 
       <View style={styles.compactPhotoText}>
         <Text style={styles.compactPhotoTitle}>{title}</Text>
@@ -1787,6 +1637,16 @@ function CancelOrderModal({
               </Text>
             )}
           </Pressable>
+          <Pressable
+            onPress={onClose}
+            disabled={isCancelling}
+            style={styles.confirmBack}
+          >
+            <Text style={styles.confirmCancelText}>
+              {" "}
+              {t("common.back", "Back")}
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -2088,15 +1948,12 @@ function CompletedOrderRow({
         onPress={onToggle}
         style={({ pressed }) => [
           styles.historyOrderRow,
-
           pressed && styles.rowPressed,
         ]}
       >
         <View style={styles.historyPhotos}>
           <Image
-            source={{
-              uri: order.pickupPhoto.url,
-            }}
+            source={{ uri: order.pickupPhoto.url }}
             style={styles.historyPhoto}
           />
 
@@ -2104,9 +1961,7 @@ function CompletedOrderRow({
 
           {order.deliveryPhoto?.url ? (
             <Image
-              source={{
-                uri: order.deliveryPhoto.url,
-              }}
+              source={{ uri: order.deliveryPhoto.url }}
               style={styles.historyPhoto}
             />
           ) : (
@@ -2116,73 +1971,50 @@ function CompletedOrderRow({
           )}
         </View>
 
+        {/* ORDER ID ONLY */}
         <View style={styles.historyInfo}>
           <Text style={styles.historyOrderTitle}>
-            {isCancelled
-              ? `${t(
-                  "orders.cancelledOrder",
-                  "Cancelled Order",
-                )}${order.orderId ? ` #${order.orderId}` : ""}`
-              : `${t(
-                  "driver.delivery",
-                  "Delivery",
-                )}${order.orderId ? ` #${order.orderId}` : ""}`}
-          </Text>
-
-          <Text style={styles.historyOrderMeta}>
-            {order.durationSeconds != null
-              ? formatDuration(order.durationSeconds)
-              : "--"}
+            {order.orderId ? `#${order.orderId}` : "--"}
           </Text>
         </View>
 
-        <View style={[isCancelled ? styles.cancelledBadge : styles.doneBadge]}>
-          <Text
-            style={[
-              isCancelled ? styles.cancelledBadgeText : styles.doneBadgeText,
-            ]}
-          >
-            {isCancelled
-              ? t("orders.cancelled", "Cancelled")
-              : t("orders.delivered", "Delivered")}
-          </Text>
-        </View>
-      </Pressable>
-
-      {expanded && (
-        <View style={styles.completedExpanded}>
-          <View style={styles.expandedLine}>
-            <Text style={styles.expandedLabel}>
+        {/* PICKUP + DELIVERY IN THE SAME ROW */}
+        <View style={styles.historyTimes}>
+          <View style={styles.historyTimeBlock}>
+            <Text style={styles.historyTimeLabel}>
               {t("orders.pickupTime", "Pickup")}
             </Text>
-
-            <Text style={styles.expandedValue}>
+            <Text style={styles.historyTimeValue} numberOfLines={1}>
               {formatDateTime(order.pickupTime, language)}
             </Text>
           </View>
 
-          {!!order.orderId && (
-            <View style={styles.expandedLine}>
-              <Text style={styles.expandedLabel}>
-                {t("orders.orderId", "Order ID")}
-              </Text>
+          <View style={styles.historyTimeDivider} />
 
-              <Text style={styles.expandedValue}>#{order.orderId}</Text>
-            </View>
-          )}
-
-          <View style={styles.expandedLine}>
-            <Text style={styles.expandedLabel}>
+          <View style={styles.historyTimeBlock}>
+            <Text style={styles.historyTimeLabel}>
               {t("orders.deliveryTime", "Delivery")}
             </Text>
-
-            <Text style={styles.expandedValue}>
+            <Text style={styles.historyTimeValue} numberOfLines={1}>
               {order.deliveryTime
                 ? formatDateTime(order.deliveryTime, language)
                 : "--"}
             </Text>
           </View>
+        </View>
 
+        {/* STATUS BADGE (kept, only shows for cancelled) */}
+        {isCancelled && (
+          <View style={styles.cancelledBadge}>
+            <Text style={styles.cancelledBadgeText}>
+              {t("orders.cancelled", "Cancelled")}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+
+      {expanded && (
+        <View style={styles.completedExpanded}>
           {!!order.notes && (
             <Text style={styles.expandedNotes}>{order.notes}</Text>
           )}
@@ -3386,7 +3218,7 @@ const styles = StyleSheet.create({
   },
 
   orderMenuButton: {
-    width: 32,
+    width: "auto",
     height: 32,
 
     alignItems: "center",
@@ -3395,6 +3227,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
 
     backgroundColor: COLORS.light,
+    padding: 2,
   },
   cancelOverlay: {
     flex: 1,
@@ -3430,6 +3263,13 @@ const styles = StyleSheet.create({
   cancelTitle: {
     fontSize: 15,
     fontWeight: "900",
+
+    color: COLORS.error,
+  },
+
+  cancelTitleInline: {
+    fontSize: 10,
+    fontWeight: "600",
 
     color: COLORS.error,
   },
@@ -3634,6 +3474,18 @@ const styles = StyleSheet.create({
 
     color: COLORS.white,
   },
+  confirmBack: {
+    height: 42,
+
+    marginTop: 15,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 10,
+
+    backgroundColor: COLORS.muted,
+  },
 
   orderStatusFilters: {
     flexDirection: "row",
@@ -3692,20 +3544,50 @@ const styles = StyleSheet.create({
   },
 
   cancelledBadgeText: {
-    fontSize: 8,
-    fontWeight: "900",
+    fontSize: 6,
+    fontWeight: "700",
 
     color: COLORS.error,
   },
   photoUploadingOverlay: {
-  ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFill,
 
-  alignItems: "center",
-  justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
 
-  borderRadius: 8,
+    borderRadius: 8,
 
-  backgroundColor:
-    "rgba(0, 0, 0, 0.28)",
-},
+    backgroundColor: "rgba(0, 0, 0, 0.28)",
+  },
+
+  historyTimes: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+
+  historyTimeBlock: {
+    alignItems: "center",
+    minWidth: 60,
+  },
+
+  historyTimeDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 22,
+    marginHorizontal: 8,
+    backgroundColor: COLORS.border,
+  },
+
+  historyTimeLabel: {
+    fontSize: 5,
+    fontWeight: "600",
+    color: COLORS.muted,
+  },
+
+  historyTimeValue: {
+    marginTop: 2,
+    fontSize: 5,
+    fontWeight: "600",
+    color: COLORS.primary,
+  },
 });

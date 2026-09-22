@@ -198,7 +198,7 @@
      "finishTitle": "Finish your shift?",
     "finishDescription": "You've done enough for today. Finish your shift and get some rest?",
     "timeWorked": "Time worked",
-    "getSomeRest": "Get Some Rest",
+    "getSomeRest": "End Shift",
     "continueWorking": "Continue Working",
     "autoFinished": "Your shift was automatically finished at the end of the day"
   },
