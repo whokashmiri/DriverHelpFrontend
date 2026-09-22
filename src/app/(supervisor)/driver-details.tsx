@@ -1,3 +1,4 @@
+import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -5,6 +6,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,10 +16,14 @@ import {
 } from "react-native";
 
 import {
+  Bike,
+  Camera,
+  Car,
   Eye,
   EyeOff,
   MessageCircle,
   Pencil,
+  PersonStanding,
   Phone,
   X,
 } from "lucide-react-native";
@@ -28,14 +34,18 @@ import { useTranslation } from "react-i18next";
 
 import { AppScreen } from "../../components/AppScreen";
 
-import { getDriverById, updateDriverStatus ,updateDriver} from "../../api/driverApi";
+import {
+  getDriverById,
+  updateDriver,
+  updateDriverStatus,
+} from "../../api/driverApi";
 
 import { getDriverLocation } from "../../api/locationApi";
 import { getDriverStats } from "../../api/statsApi";
 
 import { useLanguage } from "../../context/LanguageContext";
 
-import type { Driver } from "../../types/driver";
+import type { Driver ,VehicleType ,UpdateDriverPayload } from "../../types/driver";
 import type { DriverLocation } from "../../types/location";
 import type { DriverStatsResponse } from "../../types/stats";
 
@@ -77,23 +87,35 @@ export default function DriverDetailsScreen() {
 
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  const [editVisible, setEditVisible] =
-  useState(false);
+  const [editVisible, setEditVisible] = useState(false);
 
-const [editName, setEditName] =
-  useState("");
+  const [editName, setEditName] = useState("");
+  const [
+  editShortName,
+  setEditShortName,
+] = useState("");
 
-const [editIqamaId, setEditIqamaId] =
-  useState("");
+const [
+  editVehicleType,
+  setEditVehicleType,
+] = useState<VehicleType | null>(
+  null,
+);
 
-const [editPhone, setEditPhone] =
-  useState("");
+const [
+  editProfilePictureUri,
+  setEditProfilePictureUri,
+] = useState<string | null>(
+  null,
+);
 
-const [editPassword, setEditPassword] =
-  useState("");
+  const [editIqamaId, setEditIqamaId] = useState("");
 
-const [isUpdatingDriver, setIsUpdatingDriver] =
-  useState(false);
+  const [editPhone, setEditPhone] = useState("");
+
+  const [editPassword, setEditPassword] = useState("");
+
+  const [isUpdatingDriver, setIsUpdatingDriver] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -133,13 +155,17 @@ const [isUpdatingDriver, setIsUpdatingDriver] =
     void loadData();
   }, [loadData]);
 
-  const openEditDriver = () => {
+ const openEditDriver = () => {
   if (!driver) {
     return;
   }
 
   setEditName(
     driver.name ?? "",
+  );
+
+  setEditShortName(
+    driver.shortName ?? "",
   );
 
   setEditIqamaId(
@@ -150,169 +176,138 @@ const [isUpdatingDriver, setIsUpdatingDriver] =
     driver.phone ?? "",
   );
 
+  setEditVehicleType(
+    driver.vehicleType ??
+      null,
+  );
+
+  /*
+   * null means no NEW image selected.
+   *
+   * We still display the existing
+   * remote image separately.
+   */
+  setEditProfilePictureUri(
+    null,
+  );
+
   setEditPassword("");
 
   setError(null);
 
   setEditVisible(true);
 };
-
-const closeEditDriver = () => {
-  if (isUpdatingDriver) {
-    return;
-  }
-
-  setEditVisible(false);
-};
-
-const handleUpdateDriver = async () => {
-  if (
-    !driver ||
-    !driverId ||
-    isUpdatingDriver
-  ) {
-    return;
-  }
-
-  const name =
-    editName.trim();
-
-  const iqamaId =
-    editIqamaId.trim();
-
-  const phone =
-    editPhone.trim();
-
-  const password =
-    editPassword.trim();
-
-  if (!name) {
-    setError(
-      t(
-        "drivers.nameRequired",
-        "Driver name is required",
-      ),
-    );
-
-    return;
-  }
-
-  if (!iqamaId) {
-    setError(
-      t(
-        "drivers.iqamaRequired",
-        "Iqama ID is required",
-      ),
-    );
-
-    return;
-  }
-
-  if (
-    password &&
-    password.length < 6
-  ) {
-    setError(
-      t(
-        "drivers.passwordLength",
-        "Password must be at least 6 characters",
-      ),
-    );
-
-    return;
-  }
-
-  try {
-    setIsUpdatingDriver(true);
-
-    setError(null);
-
-    const payload: {
-      name: string;
-      iqamaId: string;
-      phone: string | null;
-      password?: string;
-    } = {
-      name,
-      iqamaId,
-      phone:
-        phone || null,
-    };
-
-    if (password) {
-      payload.password =
-        password;
+  const closeEditDriver = () => {
+    if (isUpdatingDriver) {
+      return;
     }
 
-    const response =
-      await updateDriver(
-        driverId,
-        payload,
+    setEditVisible(false);
+  };
+
+  const handleUpdateDriver = async () => {
+    if (!driver || !driverId || isUpdatingDriver) {
+      return;
+    }
+
+    const name = editName.trim();
+
+    const iqamaId = editIqamaId.trim();
+
+    const phone = editPhone.trim();
+
+    const password = editPassword.trim();
+
+    if (!name) {
+      setError(t("drivers.nameRequired", "Driver name is required"));
+
+      return;
+    }
+
+    if (!iqamaId) {
+      setError(t("drivers.iqamaRequired", "Iqama ID is required"));
+
+      return;
+    }
+
+    if (password && password.length < 6) {
+      setError(
+        t("drivers.passwordLength", "Password must be at least 6 characters"),
       );
 
-    setDriver(
-      response.driver,
-    );
+      return;
+    }
 
-    setEditPassword("");
+    try {
+      setIsUpdatingDriver(true);
 
-    setEditVisible(false);
-  } catch (err) {
-    setError(
-      getErrorMessage(
-        err,
-        t(
-          "drivers.updateFailed",
-          "Unable to update driver",
+      setError(null);
+
+      const payload: {
+        name: string;
+        iqamaId: string;
+        phone: string | null;
+        password?: string;
+      } = {
+        name,
+        iqamaId,
+        phone: phone || null,
+      };
+
+      if (password) {
+        payload.password = password;
+      }
+
+      const response = await updateDriver(driverId, payload);
+
+      setDriver(response.driver);
+
+      setEditPassword("");
+
+      setEditVisible(false);
+    } catch (err) {
+      setError(
+        getErrorMessage(
+          err,
+          t("drivers.updateFailed", "Unable to update driver"),
         ),
+      );
+    } finally {
+      setIsUpdatingDriver(false);
+    }
+  };
+
+  const handleStatusPress = () => {
+    if (!driver) {
+      return;
+    }
+
+    if (!driver.isActive) {
+      void toggleStatus();
+      return;
+    }
+
+    Alert.alert(
+      t("drivers.deactivateConfirmTitle", "Deactivate Driver?"),
+      t(
+        "drivers.deactivateConfirmMessage",
+        "Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
       ),
-    );
-  } finally {
-    setIsUpdatingDriver(false);
-  }
-};
-
-
-const handleStatusPress = () => {
-  if (!driver) {
-    return;
-  }
-
-  if (!driver.isActive) {
-    void toggleStatus();
-    return;
-  }
-
-  Alert.alert(
-    t(
-      "drivers.deactivateConfirmTitle",
-      "Deactivate Driver?",
-    ),
-    t(
-      "drivers.deactivateConfirmMessage",
-      "Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
-    ),
-    [
-      {
-        text: t(
-          "common.cancel",
-          "Cancel",
-        ),
-        style: "cancel",
-      },
-      {
-        text: t(
-          "drivers.deactivate",
-          "Deactivate Driver",
-        ),
-        style: "destructive",
-        onPress: () => {
-          void toggleStatus();
+      [
+        {
+          text: t("common.cancel", "Cancel"),
+          style: "cancel",
         },
-      },
-    ],
-  );
-};
+        {
+          text: t("drivers.deactivate", "Deactivate Driver"),
+          style: "destructive",
+          onPress: () => {
+            void toggleStatus();
+          },
+        },
+      ],
+    );
+  };
 
   const toggleStatus = async () => {
     if (!driver || !driverId || isUpdatingStatus) {
@@ -428,30 +423,19 @@ const handleStatusPress = () => {
               </View>
 
               <Pressable
-  onPress={openEditDriver}
-  style={({ pressed }) => [
-    styles.editDriverButton,
+                onPress={openEditDriver}
+                style={({ pressed }) => [
+                  styles.editDriverButton,
 
-    pressed &&
-      styles.buttonPressed,
-  ]}
->
-  <Pencil
-    size={15}
-    color={COLORS.primary}
-  />
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Pencil size={15} color={COLORS.primary} />
 
-  <Text
-    style={
-      styles.editDriverButtonText
-    }
-  >
-    {t(
-      "common.edit",
-      "Edit",
-    )}
-  </Text>
-</Pressable>
+                <Text style={styles.editDriverButtonText}>
+                  {t("common.edit", "Edit")}
+                </Text>
+              </Pressable>
             </View>
 
             <View style={styles.card}>
@@ -531,68 +515,46 @@ const handleStatusPress = () => {
               </View>
             )}
 
-         <Pressable
-  style={({ pressed }) => [
-    styles.statusButton,
+            <Pressable
+              style={({ pressed }) => [
+                styles.statusButton,
 
-    driver.isActive
-      ? styles.disableButton
-      : styles.enableButton,
+                driver.isActive ? styles.disableButton : styles.enableButton,
 
-    pressed &&
-      styles.buttonPressed,
+                pressed && styles.buttonPressed,
 
-    isUpdatingStatus &&
-      styles.buttonDisabled,
-  ]}
-  disabled={
-    isUpdatingStatus
-  }
-  onPress={
-    handleStatusPress
-  }
->
-  {isUpdatingStatus ? (
-    <ActivityIndicator
-      color={COLORS.white}
-    />
-  ) : (
-    <Text
-      style={
-        styles.buttonText
-      }
-    >
-      {driver.isActive
-        ? t(
-            "drivers.deactivate",
-            "Deactivate Driver",
-          )
-        : t(
-            "drivers.activate",
-            "Activate Driver",
-          )}
-    </Text>
-  )}
-</Pressable>
+                isUpdatingStatus && styles.buttonDisabled,
+              ]}
+              disabled={isUpdatingStatus}
+              onPress={handleStatusPress}
+            >
+              {isUpdatingStatus ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text style={styles.buttonText}>
+                  {driver.isActive
+                    ? t("drivers.deactivate", "Deactivate Driver")
+                    : t("drivers.activate", "Activate Driver")}
+                </Text>
+              )}
+            </Pressable>
           </>
         ) : null}
 
         <EditDriverModal
-  visible={editVisible}
-  name={editName}
-  iqamaId={editIqamaId}
-  phone={editPhone}
-  password={editPassword}
-  loading={isUpdatingDriver}
-  onNameChange={setEditName}
-  onIqamaChange={setEditIqamaId}
-  onPhoneChange={setEditPhone}
-  onPasswordChange={setEditPassword}
-  onClose={closeEditDriver}
-  onSave={() =>
-    void handleUpdateDriver()
-  }
-/>
+          visible={editVisible}
+          name={editName}
+          iqamaId={editIqamaId}
+          phone={editPhone}
+          password={editPassword}
+          loading={isUpdatingDriver}
+          onNameChange={setEditName}
+          onIqamaChange={setEditIqamaId}
+          onPhoneChange={setEditPhone}
+          onPasswordChange={setEditPassword}
+          onClose={closeEditDriver}
+          onSave={() => void handleUpdateDriver()}
+        />
       </ScrollView>
     </AppScreen>
   );
@@ -624,24 +586,19 @@ function EditDriverModal({
 
   loading: boolean;
 
-  onNameChange:
-    (value: string) => void;
+  onNameChange: (value: string) => void;
 
-  onIqamaChange:
-    (value: string) => void;
+  onIqamaChange: (value: string) => void;
 
-  onPhoneChange:
-    (value: string) => void;
+  onPhoneChange: (value: string) => void;
 
-  onPasswordChange:
-    (value: string) => void;
+  onPasswordChange: (value: string) => void;
 
   onClose: () => void;
 
   onSave: () => void;
 }) {
-  const { t } =
-    useTranslation();
+  const { t } = useTranslation();
 
   return (
     <Modal
@@ -650,42 +607,19 @@ function EditDriverModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View
-        style={
-          styles.editModalOverlay
-        }
-      >
-        <View
-          style={
-            styles.editModalCard
-          }
-        >
-          <View
-            style={
-              styles.editModalHeader
-            }
-          >
+      <View style={styles.editModalOverlay}>
+        <View style={styles.editModalCard}>
+          <View style={styles.editModalHeader}>
             <View
               style={{
                 flex: 1,
               }}
             >
-              <Text
-                style={
-                  styles.editModalTitle
-                }
-              >
-                {t(
-                  "drivers.editDriver",
-                  "Edit Driver",
-                )}
+              <Text style={styles.editModalTitle}>
+                {t("drivers.editDriver", "Edit Driver")}
               </Text>
 
-              <Text
-                style={
-                  styles.editModalSubtitle
-                }
-              >
+              <Text style={styles.editModalSubtitle}>
                 {t(
                   "drivers.editDriverDescription",
                   "Update driver information",
@@ -696,81 +630,43 @@ function EditDriverModal({
             <Pressable
               onPress={onClose}
               disabled={loading}
-              style={
-                styles.editModalClose
-              }
+              style={styles.editModalClose}
             >
-              <X
-                size={17}
-                color={
-                  COLORS.primary
-                }
-              />
+              <X size={17} color={COLORS.primary} />
             </Pressable>
           </View>
 
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={
-              false
-            }
+            showsVerticalScrollIndicator={false}
           >
             <EditField
-              label={t(
-                "profile.name",
-                "Name",
-              )}
+              label={t("profile.name", "Name")}
               value={name}
-              onChangeText={
-                onNameChange
-              }
-              placeholder={t(
-                "drivers.namePlaceholder",
-                "Driver name",
-              )}
+              onChangeText={onNameChange}
+              placeholder={t("drivers.namePlaceholder", "Driver name")}
             />
 
             <EditField
-              label={t(
-                "profile.iqama",
-                "Iqama ID",
-              )}
+              label={t("profile.iqama", "Iqama ID")}
               value={iqamaId}
-              onChangeText={
-                onIqamaChange
-              }
-              placeholder={t(
-                "drivers.iqamaPlaceholder",
-                "Iqama ID",
-              )}
+              onChangeText={onIqamaChange}
+              placeholder={t("drivers.iqamaPlaceholder", "Iqama ID")}
               keyboardType="number-pad"
             />
 
             <EditField
-              label={t(
-                "profile.phone",
-                "Phone",
-              )}
+              label={t("profile.phone", "Phone")}
               value={phone}
-              onChangeText={
-                onPhoneChange
-              }
-              placeholder={t(
-                "drivers.phonePlaceholder",
-                "Phone number",
-              )}
+              onChangeText={onPhoneChange}
+              placeholder={t("drivers.phonePlaceholder", "Phone number")}
               keyboardType="phone-pad"
             />
 
             <EditField
-              label={t(
-                "profile.password",
-                "New Password",
-              )}
+              label={t("profile.password", "New Password")}
               value={password}
-              onChangeText={
-                onPasswordChange
-              }
+              onChangeText={onPasswordChange}
               placeholder={t(
                 "driver.passwordOptional",
                 "Leave empty to keep current password",
@@ -779,30 +675,18 @@ function EditDriverModal({
             />
           </ScrollView>
 
-          <View
-            style={
-              styles.editModalActions
-            }
-          >
+          <View style={styles.editModalActions}>
             <Pressable
               onPress={onClose}
               disabled={loading}
               style={({ pressed }) => [
                 styles.editCancelButton,
 
-                pressed &&
-                  styles.buttonPressed,
+                pressed && styles.buttonPressed,
               ]}
             >
-              <Text
-                style={
-                  styles.editCancelText
-                }
-              >
-                {t(
-                  "common.cancel",
-                  "Cancel",
-                )}
+              <Text style={styles.editCancelText}>
+                {t("common.cancel", "Cancel")}
               </Text>
             </Pressable>
 
@@ -812,30 +696,16 @@ function EditDriverModal({
               style={({ pressed }) => [
                 styles.editSaveButton,
 
-                pressed &&
-                  styles.buttonPressed,
+                pressed && styles.buttonPressed,
 
-                loading &&
-                  styles.buttonDisabled,
+                loading && styles.buttonDisabled,
               ]}
             >
               {loading ? (
-                <ActivityIndicator
-                  size="small"
-                  color={
-                    COLORS.white
-                  }
-                />
+                <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
-                <Text
-                  style={
-                    styles.editSaveText
-                  }
-                >
-                  {t(
-                    "common.save",
-                    "Save",
-                  )}
+                <Text style={styles.editSaveText}>
+                  {t("common.save", "Save")}
                 </Text>
               )}
             </Pressable>
@@ -845,8 +715,6 @@ function EditDriverModal({
     </Modal>
   );
 }
-
-
 
 function EditField({
   label,
@@ -860,32 +728,21 @@ function EditField({
 
   value: string;
 
-  onChangeText:
-    (value: string) => void;
+  onChangeText: (value: string) => void;
 
   placeholder: string;
 
-  keyboardType?:
-    | "default"
-    | "number-pad"
-    | "phone-pad";
+  keyboardType?: "default" | "number-pad" | "phone-pad";
 
   secureTextEntry?: boolean;
 }) {
-  const [passwordVisible, setPasswordVisible] =
-    useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
-  const shouldShowToggle =
-    secureTextEntry;
-
-
-    
+  const shouldShowToggle = secureTextEntry;
 
   return (
     <View style={styles.editField}>
-      <Text style={styles.editFieldLabel}>
-        {label}
-      </Text>
+      <Text style={styles.editFieldLabel}>{label}</Text>
 
       <View style={styles.editInputWrapper}>
         <TextInput
@@ -894,47 +751,28 @@ function EditField({
           placeholder={placeholder}
           placeholderTextColor={COLORS.muted}
           keyboardType={keyboardType}
-          secureTextEntry={
-            secureTextEntry &&
-            !passwordVisible
-          }
-          autoCapitalize={
-            secureTextEntry
-              ? "none"
-              : "sentences"
-          }
+          secureTextEntry={secureTextEntry && !passwordVisible}
+          autoCapitalize={secureTextEntry ? "none" : "sentences"}
           autoCorrect={false}
           style={[
             styles.editInput,
-            shouldShowToggle &&
-              styles.editInputWithIcon,
+            shouldShowToggle && styles.editInputWithIcon,
           ]}
         />
 
         {shouldShowToggle && (
           <Pressable
-            onPress={() =>
-              setPasswordVisible(
-                (current) => !current,
-              )
-            }
+            onPress={() => setPasswordVisible((current) => !current)}
             style={({ pressed }) => [
               styles.passwordEyeButton,
 
-              pressed &&
-                styles.buttonPressed,
+              pressed && styles.buttonPressed,
             ]}
           >
             {passwordVisible ? (
-              <EyeOff
-                size={18}
-                color={COLORS.muted}
-              />
+              <EyeOff size={18} color={COLORS.muted} />
             ) : (
-              <Eye
-                size={18}
-                color={COLORS.muted}
-              />
+              <Eye size={18} color={COLORS.muted} />
             )}
           </Pressable>
         )}
@@ -1361,214 +1199,197 @@ const styles = StyleSheet.create({
   },
 
   editDriverButton: {
-  minHeight: 34,
+    minHeight: 34,
 
-  flexDirection: "row",
-  alignItems: "center",
+    flexDirection: "row",
+    alignItems: "center",
 
-  gap: 5,
+    gap: 5,
 
-  paddingHorizontal: 10,
+    paddingHorizontal: 10,
 
-  borderRadius: 9,
+    borderRadius: 9,
 
-  backgroundColor:
-    COLORS.white,
+    backgroundColor: COLORS.white,
 
-  borderWidth: 1,
-  borderColor:
-    COLORS.border,
-},
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
 
-editDriverButtonText: {
-  fontSize: 9,
+  editDriverButtonText: {
+    fontSize: 9,
 
-  fontWeight: "800",
+    fontWeight: "800",
 
-  color:
-    COLORS.primary,
-},
+    color: COLORS.primary,
+  },
 
-editModalOverlay: {
-  flex: 1,
+  editModalOverlay: {
+    flex: 1,
 
-  paddingHorizontal: 16,
+    paddingHorizontal: 16,
 
-  alignItems: "center",
-  justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
 
-  backgroundColor:
-    "rgba(10, 9, 12, 0.5)",
-},
+    backgroundColor: "rgba(10, 9, 12, 0.5)",
+  },
 
-editModalCard: {
-  width: "100%",
-  maxWidth: 420,
+  editModalCard: {
+    width: "100%",
+    maxWidth: 420,
 
-  maxHeight: "90%",
+    maxHeight: "90%",
 
-  padding: 14,
+    padding: 14,
 
-  borderRadius: 16,
+    borderRadius: 16,
 
-  backgroundColor:
-    COLORS.white,
-},
+    backgroundColor: COLORS.white,
+  },
 
-editModalHeader: {
-  flexDirection: "row",
+  editModalHeader: {
+    flexDirection: "row",
 
-  alignItems: "center",
+    alignItems: "center",
 
-  marginBottom: 12,
-},
+    marginBottom: 12,
+  },
 
-editModalTitle: {
-  fontSize: 15,
+  editModalTitle: {
+    fontSize: 15,
 
-  fontWeight: "900",
+    fontWeight: "900",
 
-  color:
-    COLORS.primary,
-},
+    color: COLORS.primary,
+  },
 
-editModalSubtitle: {
-  marginTop: 2,
+  editModalSubtitle: {
+    marginTop: 2,
 
-  fontSize: 9,
+    fontSize: 9,
 
-  color:
-    COLORS.muted,
-},
+    color: COLORS.muted,
+  },
 
-editModalClose: {
-  width: 32,
-  height: 32,
+  editModalClose: {
+    width: 32,
+    height: 32,
 
-  alignItems: "center",
-  justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
 
-  borderRadius: 9,
+    borderRadius: 9,
 
-  backgroundColor:
-    COLORS.light,
-},
+    backgroundColor: COLORS.light,
+  },
 
-editField: {
-  marginBottom: 10,
-},
+  editField: {
+    marginBottom: 10,
+  },
 
-editFieldLabel: {
-  marginBottom: 5,
+  editFieldLabel: {
+    marginBottom: 5,
 
-  fontSize: 9,
+    fontSize: 9,
 
-  fontWeight: "800",
+    fontWeight: "800",
 
-  color:
-    COLORS.muted,
-},
+    color: COLORS.muted,
+  },
 
-editInputWrapper: {
-  position: "relative",
+  editInputWrapper: {
+    position: "relative",
 
-  justifyContent: "center",
-},
+    justifyContent: "center",
+  },
 
-editInput: {
-  height: 42,
+  editInput: {
+    height: 42,
 
-  paddingHorizontal: 10,
+    paddingHorizontal: 10,
 
-  borderWidth: 1,
+    borderWidth: 1,
 
-  borderColor:
-    COLORS.border,
+    borderColor: COLORS.border,
 
-  borderRadius: 9,
+    borderRadius: 9,
 
-  backgroundColor:
-    COLORS.light,
+    backgroundColor: COLORS.light,
 
-  fontSize: 11,
+    fontSize: 11,
 
-  fontWeight: "600",
+    fontWeight: "600",
 
-  color:
-    COLORS.black,
-},
+    color: COLORS.black,
+  },
 
-editInputWithIcon: {
-  paddingRight: 44,
-},
+  editInputWithIcon: {
+    paddingRight: 44,
+  },
 
-passwordEyeButton: {
-  position: "absolute",
+  passwordEyeButton: {
+    position: "absolute",
 
-  right: 4,
+    right: 4,
 
-  width: 38,
-  height: 38,
+    width: 38,
+    height: 38,
 
-  alignItems: "center",
-  justifyContent: "center",
-},
-editModalActions: {
-  flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editModalActions: {
+    flexDirection: "row",
 
-  gap: 8,
+    gap: 8,
 
-  marginTop: 5,
-},
+    marginTop: 5,
+  },
 
-editCancelButton: {
-  flex: 1,
+  editCancelButton: {
+    flex: 1,
 
-  height: 40,
+    height: 40,
 
-  alignItems: "center",
-  justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
 
-  borderWidth: 1,
+    borderWidth: 1,
 
-  borderColor:
-    COLORS.border,
+    borderColor: COLORS.border,
 
-  borderRadius: 9,
+    borderRadius: 9,
 
-  backgroundColor:
-    COLORS.light,
-},
+    backgroundColor: COLORS.light,
+  },
 
-editCancelText: {
-  fontSize: 10,
+  editCancelText: {
+    fontSize: 10,
 
-  fontWeight: "800",
+    fontWeight: "800",
 
-  color:
-    COLORS.primary,
-},
+    color: COLORS.primary,
+  },
 
-editSaveButton: {
-  flex: 1,
+  editSaveButton: {
+    flex: 1,
 
-  height: 40,
+    height: 40,
 
-  alignItems: "center",
-  justifyContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
 
-  borderRadius: 9,
+    borderRadius: 9,
 
-  backgroundColor:
-    COLORS.primary,
-},
+    backgroundColor: COLORS.primary,
+  },
 
-editSaveText: {
-  fontSize: 10,
+  editSaveText: {
+    fontSize: 10,
 
-  fontWeight: "900",
+    fontWeight: "900",
 
-  color:
-    COLORS.white,
-},
+    color: COLORS.white,
+  },
 });

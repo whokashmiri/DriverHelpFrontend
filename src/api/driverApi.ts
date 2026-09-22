@@ -1,78 +1,96 @@
 import { api } from "./client";
 
 import type {
-  Driver,
-  VehicleType
+  CreateDriverPayload,
+  CreateDriverResponse,
+  DriverResponse,
+  DriversResponse,
+  UpdateDriverPayload,
+  UpdateDriverStatusResponse,
 } from "../types/driver";
 
-export interface CreateDriverPayload {
-  iqamaId: string;
-  name: string;
-  password: string;
+function getImageFileName(uri: string) {
+  const cleanUri = uri.split("?")[0];
 
-  phone?: string;
+  const name = cleanUri.split("/").pop();
 
-  vehicleType:
-    VehicleType;
+  return name || `profile-${Date.now()}.jpg`;
 }
 
-export interface UpdateDriverPayload {
-  name?: string;
-  iqamaId?: string;
+function getImageMimeType(uri: string) {
+  const cleanUri = uri.split("?")[0].toLowerCase();
 
-  phone?:
-    | string
-    | null;
+  if (cleanUri.endsWith(".png")) {
+    return "image/png";
+  }
 
-  password?: string;
+  if (cleanUri.endsWith(".webp")) {
+    return "image/webp";
+  }
 
-  vehicleType?:
-    VehicleType;
+  if (cleanUri.endsWith(".heic")) {
+    return "image/heic";
+  }
+
+  if (cleanUri.endsWith(".heif")) {
+    return "image/heif";
+  }
+
+  return "image/jpeg";
 }
 
-export async function createDriver(
-  payload:
-    CreateDriverPayload,
-) {
-  const response =
-    await api.post<{
-      success: boolean;
-      message: string;
-      driver: Driver;
-    }>(
-      "/drivers",
-      payload,
-    );
+function appendProfilePicture(formData: FormData, uri?: string | null) {
+  if (!uri) {
+    return;
+  }
+
+  formData.append("profilePicture", {
+    uri,
+
+    name: getImageFileName(uri),
+
+    type: getImageMimeType(uri),
+  } as any);
+}
+
+export async function createDriver(payload: CreateDriverPayload) {
+  const formData = new FormData();
+
+  formData.append("iqamaId", payload.iqamaId);
+
+  formData.append("name", payload.name);
+
+  if (payload.shortName) {
+    formData.append("shortName", payload.shortName);
+  }
+
+  if (payload.phone) {
+    formData.append("phone", payload.phone);
+  }
+
+  formData.append("password", payload.password);
+
+  formData.append("vehicleType", payload.vehicleType);
+
+  appendProfilePicture(formData, payload.profilePictureUri);
+
+  const response = await api.post<CreateDriverResponse>("/drivers", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
 
   return response.data;
 }
 
 export async function getMyDrivers() {
-  const response =
-    await api.get<{
-      success: boolean;
-
-      count: number;
-
-      workingCount?: number;
-
-      notWorkingCount?: number;
-
-      drivers: Driver[];
-    }>(
-      "/drivers",
-    );
+  const response = await api.get<DriversResponse>("/drivers");
 
   return response.data;
 }
 
-export async function getDriverById(
-  driverId: string,
-) {
-  const response = await api.get<{
-    success: boolean;
-    driver: Driver;
-  }>(`/drivers/${driverId}`);
+export async function getDriverById(driverId: string) {
+  const response = await api.get<DriverResponse>(`/drivers/${driverId}`);
 
   return response.data;
 }
@@ -81,27 +99,49 @@ export async function updateDriver(
   driverId: string,
   payload: UpdateDriverPayload,
 ) {
+  const formData = new FormData();
+
+  if (payload.name !== undefined) {
+    formData.append("name", payload.name);
+  }
+
+  if (payload.shortName !== undefined) {
+    formData.append("shortName", payload.shortName ?? "");
+  }
+
+  if (payload.iqamaId !== undefined) {
+    formData.append("iqamaId", payload.iqamaId);
+  }
+
+  if (payload.phone !== undefined) {
+    formData.append("phone", payload.phone ?? "");
+  }
+
+  if (payload.password) {
+    formData.append("password", payload.password);
+  }
+
+  if (payload.vehicleType) {
+    formData.append("vehicleType", payload.vehicleType);
+  }
+
+  appendProfilePicture(formData, payload.profilePictureUri);
+
   const response = await api.patch<{
     success: boolean;
     message: string;
-    driver: Driver;
-  }>(
-    `/drivers/${driverId}`,
-    payload,
-  );
+    driver: DriverResponse["driver"];
+  }>(`/drivers/${driverId}`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
 
   return response.data;
 }
 
-export async function updateDriverStatus(
-  driverId: string,
-  isActive: boolean,
-) {
-  const response = await api.patch<{
-    success: boolean;
-    message: string;
-    driver: Driver;
-  }>(
+export async function updateDriverStatus(driverId: string, isActive: boolean) {
+  const response = await api.patch<UpdateDriverStatusResponse>(
     `/drivers/${driverId}/status`,
     {
       isActive,
