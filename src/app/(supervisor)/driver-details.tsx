@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   Modal,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -45,7 +45,11 @@ import { getDriverStats } from "../../api/statsApi";
 
 import { useLanguage } from "../../context/LanguageContext";
 
-import type { Driver ,VehicleType ,UpdateDriverPayload } from "../../types/driver";
+import type {
+  Driver,
+  UpdateDriverPayload,
+  VehicleType,
+} from "../../types/driver";
 import type { DriverLocation } from "../../types/location";
 import type { DriverStatsResponse } from "../../types/stats";
 
@@ -90,24 +94,15 @@ export default function DriverDetailsScreen() {
   const [editVisible, setEditVisible] = useState(false);
 
   const [editName, setEditName] = useState("");
-  const [
-  editShortName,
-  setEditShortName,
-] = useState("");
+  const [editShortName, setEditShortName] = useState("");
 
-const [
-  editVehicleType,
-  setEditVehicleType,
-] = useState<VehicleType | null>(
-  null,
-);
+  const [editVehicleType, setEditVehicleType] = useState<VehicleType | null>(
+    null,
+  );
 
-const [
-  editProfilePictureUri,
-  setEditProfilePictureUri,
-] = useState<string | null>(
-  null,
-);
+  const [editProfilePictureUri, setEditProfilePictureUri] = useState<
+    string | null
+  >(null);
 
   const [editIqamaId, setEditIqamaId] = useState("");
 
@@ -155,48 +150,35 @@ const [
     void loadData();
   }, [loadData]);
 
- const openEditDriver = () => {
-  if (!driver) {
-    return;
-  }
+  const openEditDriver = () => {
+    if (!driver) {
+      return;
+    }
 
-  setEditName(
-    driver.name ?? "",
-  );
+    setEditName(driver.name ?? "");
 
-  setEditShortName(
-    driver.shortName ?? "",
-  );
+    setEditShortName(driver.shortName ?? "");
 
-  setEditIqamaId(
-    driver.iqamaId ?? "",
-  );
+    setEditIqamaId(driver.iqamaId ?? "");
 
-  setEditPhone(
-    driver.phone ?? "",
-  );
+    setEditPhone(driver.phone ?? "");
 
-  setEditVehicleType(
-    driver.vehicleType ??
-      null,
-  );
+    setEditVehicleType(driver.vehicleType ?? null);
 
-  /*
-   * null means no NEW image selected.
-   *
-   * We still display the existing
-   * remote image separately.
-   */
-  setEditProfilePictureUri(
-    null,
-  );
+    /*
+     * null means no NEW image selected.
+     *
+     * We still display the existing
+     * remote image separately.
+     */
+    setEditProfilePictureUri(null);
 
-  setEditPassword("");
+    setEditPassword("");
 
-  setError(null);
+    setError(null);
 
-  setEditVisible(true);
-};
+    setEditVisible(true);
+  };
   const closeEditDriver = () => {
     if (isUpdatingDriver) {
       return;
@@ -212,6 +194,8 @@ const [
 
     const name = editName.trim();
 
+    const shortName = editShortName.trim();
+
     const iqamaId = editIqamaId.trim();
 
     const phone = editPhone.trim();
@@ -220,6 +204,17 @@ const [
 
     if (!name) {
       setError(t("drivers.nameRequired", "Driver name is required"));
+
+      return;
+    }
+
+    if (shortName.length > 30) {
+      setError(
+        t(
+          "drivers.shortNameLength",
+          "Short name must not exceed 30 characters",
+        ),
+      );
 
       return;
     }
@@ -243,15 +238,18 @@ const [
 
       setError(null);
 
-      const payload: {
-        name: string;
-        iqamaId: string;
-        phone: string | null;
-        password?: string;
-      } = {
+      const payload: UpdateDriverPayload = {
         name,
+
+        shortName: shortName || null,
+
         iqamaId,
+
         phone: phone || null,
+
+        vehicleType: editVehicleType,
+
+        profilePictureUri: editProfilePictureUri,
       };
 
       if (password) {
@@ -263,6 +261,8 @@ const [
       setDriver(response.driver);
 
       setEditPassword("");
+
+      setEditProfilePictureUri(null);
 
       setEditVisible(false);
     } catch (err) {
@@ -277,6 +277,41 @@ const [
     }
   };
 
+  const pickProfilePicture = async () => {
+    if (isUpdatingDriver) {
+      return;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        t("common.permissionRequired", "Permission Required"),
+        t(
+          "drivers.photoPermission",
+          "Photo library permission is required to select a profile picture.",
+        ),
+      );
+
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+
+      allowsEditing: true,
+
+      aspect: [1, 1],
+
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]) {
+      return;
+    }
+
+    setEditProfilePictureUri(result.assets[0].uri);
+  };
   const handleStatusPress = () => {
     if (!driver) {
       return;
@@ -391,15 +426,33 @@ const [
           <>
             <View style={styles.heading}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {driver.name?.trim().charAt(0).toUpperCase() || "D"}
-                </Text>
+                {driver.profilePicture?.url ? (
+                  <Image
+                    source={{
+                      uri: driver.profilePicture.url,
+                    }}
+                    style={styles.avatarImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <DriverVehicleIcon
+                    vehicleType={driver.vehicleType}
+                    size={20}
+                    color={COLORS.white}
+                  />
+                )}
               </View>
 
               <View style={styles.headingInfo}>
                 <Text style={styles.title} numberOfLines={1}>
-                  {driver.name}
+                  {driver.shortName || driver.name}
                 </Text>
+
+                {!!driver.shortName && (
+                  <Text style={styles.fullName} numberOfLines={1}>
+                    {driver.name}
+                  </Text>
+                )}
 
                 <View
                   style={[
@@ -421,7 +474,6 @@ const [
                   </Text>
                 </View>
               </View>
-
               <Pressable
                 onPress={openEditDriver}
                 style={({ pressed }) => [
@@ -442,11 +494,38 @@ const [
               <Text style={styles.cardTitle}>
                 {t("drivers.information", "Driver Information")}
               </Text>
+              <View style={styles.twoColumnRow}>
+                <View style={styles.flexField}>
+                  <InfoRow
+                    label={t("drivers.fullName", "Full Name")}
+                    value={driver.name}
+                  />
 
-              <InfoRow
-                label={t("profile.iqama", "Iqama ID")}
-                value={driver.iqamaId}
-              />
+                  <InfoRow
+                    label={t("drivers.shortName", "Short Name")}
+                    value={driver.shortName || "-"}
+                  />
+                </View>
+              </View>
+              <View style={styles.twoColumnRow}>
+                <View style={styles.flexField}>
+                  <InfoRow
+                    label={t("drivers.vehicleType", "Vehicle Type")}
+                    value={
+                      driver.vehicleType === "car"
+                        ? t("drivers.car", "Car")
+                        : driver.vehicleType === "bike"
+                          ? t("drivers.bike", "Bike")
+                          : t("drivers.walking", "Walking")
+                    }
+                  />
+
+                  <InfoRow
+                    label={t("profile.iqama", "Iqama ID")}
+                    value={driver.iqamaId}
+                  />
+                </View>
+              </View>
 
               <PhoneRow
                 label={t("profile.phone", "Phone")}
@@ -544,14 +623,21 @@ const [
         <EditDriverModal
           visible={editVisible}
           name={editName}
+          shortName={editShortName}
           iqamaId={editIqamaId}
           phone={editPhone}
           password={editPassword}
+          vehicleType={editVehicleType}
+          existingProfilePictureUrl={driver?.profilePicture?.url ?? null}
+          selectedProfilePictureUri={editProfilePictureUri}
           loading={isUpdatingDriver}
           onNameChange={setEditName}
+          onShortNameChange={setEditShortName}
           onIqamaChange={setEditIqamaId}
           onPhoneChange={setEditPhone}
           onPasswordChange={setEditPassword}
+          onVehicleTypeChange={setEditVehicleType}
+          onPickProfilePicture={() => void pickProfilePicture()}
           onClose={closeEditDriver}
           onSave={() => void handleUpdateDriver()}
         />
@@ -563,14 +649,21 @@ const [
 function EditDriverModal({
   visible,
   name,
+  shortName,
   iqamaId,
   phone,
   password,
+  vehicleType,
+  existingProfilePictureUrl,
+  selectedProfilePictureUri,
   loading,
   onNameChange,
+  onShortNameChange,
   onIqamaChange,
   onPhoneChange,
   onPasswordChange,
+  onVehicleTypeChange,
+  onPickProfilePicture,
   onClose,
   onSave,
 }: {
@@ -578,15 +671,25 @@ function EditDriverModal({
 
   name: string;
 
+  shortName: string;
+
   iqamaId: string;
 
   phone: string;
 
   password: string;
 
+  vehicleType: VehicleType | null;
+
+  existingProfilePictureUrl: string | null;
+
+  selectedProfilePictureUri: string | null;
+
   loading: boolean;
 
   onNameChange: (value: string) => void;
+
+  onShortNameChange: (value: string) => void;
 
   onIqamaChange: (value: string) => void;
 
@@ -594,11 +697,17 @@ function EditDriverModal({
 
   onPasswordChange: (value: string) => void;
 
+  onVehicleTypeChange: (value: VehicleType | null) => void;
+
+  onPickProfilePicture: () => void;
+
   onClose: () => void;
 
   onSave: () => void;
 }) {
   const { t } = useTranslation();
+
+  const profileUri = selectedProfilePictureUri || existingProfilePictureUrl;
 
   return (
     <Modal
@@ -640,12 +749,102 @@ function EditDriverModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            {/* PROFILE PHOTO */}
+
+            <View style={styles.editProfileSection}>
+              <Pressable
+                disabled={loading}
+                onPress={onPickProfilePicture}
+                style={styles.editProfilePictureButton}
+              >
+                <View style={styles.editProfilePicture}>
+                  {profileUri ? (
+                    <Image
+                      source={{
+                        uri: profileUri,
+                      }}
+                      style={styles.editProfileImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <DriverVehicleIcon
+                      vehicleType={vehicleType}
+                      size={27}
+                      color={COLORS.primary}
+                    />
+                  )}
+                </View>
+
+                <View style={styles.editCameraBadge}>
+                  <Camera size={13} color={COLORS.white} />
+                </View>
+              </Pressable>
+
+              <View style={styles.editProfileText}>
+                <Text style={styles.editProfileTitle}>
+                  {t("drivers.profilePicture", "Profile Picture")}
+                </Text>
+
+                <Text style={styles.editProfileSubtitle}>
+                  {t(
+                    "drivers.changeProfilePicture",
+                    "Tap the image to choose a new photo",
+                  )}
+                </Text>
+              </View>
+            </View>
+
+            {/* FULL NAME */}
+
             <EditField
-              label={t("profile.name", "Name")}
+              label={t("profile.name", "Full Name")}
               value={name}
               onChangeText={onNameChange}
               placeholder={t("drivers.namePlaceholder", "Driver name")}
             />
+
+            {/* SHORT NAME */}
+
+            <EditField
+              label={t("drivers.shortName", "Short Name")}
+              value={shortName}
+              onChangeText={onShortNameChange}
+              placeholder={t("drivers.shortNamePlaceholder", "Example: Ahmed")}
+            />
+
+            {/* VEHICLE */}
+
+            <View style={styles.editField}>
+              <Text style={styles.editFieldLabel}>
+                {t("drivers.vehicleType", "Vehicle Type")}
+              </Text>
+
+              <View style={styles.vehicleOptions}>
+                <VehicleOption
+                  label={t("drivers.car", "Car")}
+                  icon={Car}
+                  selected={vehicleType === "car"}
+                  disabled={loading}
+                  onPress={() => onVehicleTypeChange("car")}
+                />
+
+                <VehicleOption
+                  label={t("drivers.bike", "Bike")}
+                  icon={Bike}
+                  selected={vehicleType === "bike"}
+                  disabled={loading}
+                  onPress={() => onVehicleTypeChange("bike")}
+                />
+
+                <VehicleOption
+                  label={t("drivers.walking", "Walking")}
+                  icon={PersonStanding}
+                  selected={vehicleType === null}
+                  disabled={loading}
+                  onPress={() => onVehicleTypeChange(null)}
+                />
+              </View>
+            </View>
 
             <EditField
               label={t("profile.iqama", "Iqama ID")}
@@ -716,6 +915,73 @@ function EditDriverModal({
   );
 }
 
+function VehicleOption({
+  label,
+  icon: Icon,
+  selected,
+  disabled,
+  onPress,
+}: {
+  label: string;
+
+  icon: typeof Car;
+
+  selected: boolean;
+
+  disabled: boolean;
+
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.vehicleOption,
+
+        selected && styles.vehicleOptionSelected,
+
+        pressed && styles.buttonPressed,
+
+        disabled && styles.buttonDisabled,
+      ]}
+    >
+      <Icon size={17} color={selected ? COLORS.white : COLORS.primary} />
+
+      <Text
+        style={[
+          styles.vehicleOptionText,
+
+          selected && styles.vehicleOptionTextSelected,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function DriverVehicleIcon({
+  vehicleType,
+  size = 20,
+  color = COLORS.white,
+}: {
+  vehicleType?: VehicleType | null;
+
+  size?: number;
+
+  color?: string;
+}) {
+  if (vehicleType === "car") {
+    return <Car size={size} color={color} strokeWidth={2.3} />;
+  }
+
+  if (vehicleType === "bike") {
+    return <Bike size={size} color={color} strokeWidth={2.3} />;
+  }
+
+  return <PersonStanding size={size} color={color} strokeWidth={2.3} />;
+}
 function EditField({
   label,
   value,
@@ -993,10 +1259,9 @@ const styles = StyleSheet.create({
   },
 
   infoRow: {
+    flex: 1,
     paddingVertical: 7,
-
     borderBottomWidth: StyleSheet.hairlineWidth,
-
     borderBottomColor: COLORS.border,
   },
 
@@ -1391,5 +1656,173 @@ const styles = StyleSheet.create({
     fontWeight: "900",
 
     color: COLORS.white,
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+
+    borderRadius: 20,
+  },
+
+  fullName: {
+    marginTop: 1,
+
+    fontSize: 9,
+
+    color: COLORS.muted,
+  },
+
+  editProfileSection: {
+    minHeight: 74,
+
+    marginBottom: 12,
+
+    padding: 8,
+
+    flexDirection: "row",
+
+    alignItems: "center",
+
+    borderWidth: 1,
+
+    borderColor: COLORS.border,
+
+    borderRadius: 11,
+
+    backgroundColor: COLORS.light,
+  },
+
+  editProfilePictureButton: {
+    position: "relative",
+
+    marginRight: 10,
+  },
+
+  editProfilePicture: {
+    width: 58,
+
+    height: 58,
+
+    borderRadius: 29,
+
+    alignItems: "center",
+
+    justifyContent: "center",
+
+    overflow: "hidden",
+
+    borderWidth: 2,
+
+    borderColor: COLORS.white,
+
+    backgroundColor: COLORS.white,
+  },
+
+  editProfileImage: {
+    width: "100%",
+
+    height: "100%",
+  },
+
+  editCameraBadge: {
+    position: "absolute",
+
+    right: -2,
+
+    bottom: -1,
+
+    width: 23,
+
+    height: 23,
+
+    borderRadius: 12,
+
+    alignItems: "center",
+
+    justifyContent: "center",
+
+    borderWidth: 2,
+
+    borderColor: COLORS.white,
+
+    backgroundColor: COLORS.primary,
+  },
+
+  editProfileText: {
+    flex: 1,
+  },
+
+  editProfileTitle: {
+    fontSize: 10,
+
+    fontWeight: "800",
+
+    color: COLORS.primary,
+  },
+
+  editProfileSubtitle: {
+    marginTop: 3,
+
+    fontSize: 8,
+
+    lineHeight: 12,
+
+    color: COLORS.muted,
+  },
+
+  vehicleOptions: {
+    flexDirection: "row",
+
+    gap: 6,
+  },
+
+  vehicleOption: {
+    flex: 1,
+
+    minHeight: 48,
+
+    alignItems: "center",
+
+    justifyContent: "center",
+
+    gap: 3,
+
+    borderWidth: 1,
+
+    borderColor: COLORS.border,
+
+    borderRadius: 9,
+
+    backgroundColor: COLORS.light,
+  },
+
+  vehicleOptionSelected: {
+    borderColor: COLORS.primary,
+
+    backgroundColor: COLORS.primary,
+  },
+
+  vehicleOptionText: {
+    fontSize: 8,
+
+    fontWeight: "800",
+
+    color: COLORS.primary,
+  },
+
+  vehicleOptionTextSelected: {
+    color: COLORS.white,
+  },
+  twoColumnRow: {
+    flexDirection: "row",
+    gap: 7,
+  },
+
+  flexField: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 7,
+    flex: 1,
   },
 });

@@ -121,8 +121,8 @@ export async function updateDriver(
     formData.append("password", payload.password);
   }
 
-  if (payload.vehicleType) {
-    formData.append("vehicleType", payload.vehicleType);
+  if (payload.vehicleType !== undefined) {
+    formData.append("vehicleType", payload.vehicleType ?? "");
   }
 
   appendProfilePicture(formData, payload.profilePictureUri);
