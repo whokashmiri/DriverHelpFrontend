@@ -17,7 +17,7 @@ import { useTranslation } from "react-i18next";
 
 import { Camera, Map, Marker } from "@maplibre/maplibre-react-native";
 
-import { Bike, Car, PersonStanding } from "lucide-react-native";
+import { Bike, Car, PersonStanding, Phone } from "lucide-react-native";
 
 import { AppScreen } from "../../components/AppScreen";
 
@@ -434,12 +434,20 @@ export default function LiveMapScreen() {
                           </Text>
 
                           <View style={styles.phoneVehicleContainer}>
-                            <Text
-                              numberOfLines={1}
-                              style={styles.markerDriverPhone}
-                            >
-                              {driver?.phone ?? "-"}
-                            </Text>
+                            <View style={styles.phoneRow}>
+                              <Phone
+                                size={8}
+                                color="#111"
+                                style={styles.phoneIcon}
+                              />
+
+                              <Text
+                                numberOfLines={1}
+                                style={styles.markerDriverPhone}
+                              >
+                                {driver?.phone ?? "-"}
+                              </Text>
+                            </View>
 
                             <VehicleBadge
                               vehicleType={driver?.vehicleType}
@@ -1138,27 +1146,16 @@ const styles = StyleSheet.create({
 
   markerLabel: {
     minWidth: 132,
-
-    maxWidth: 185,
-
+    // maxWidth: 185,   <-- REMOVE this line
     minHeight: 48,
-
     flexDirection: "row",
-
     alignItems: "center",
-
     paddingHorizontal: 6,
-
     paddingVertical: 5,
-
     borderRadius: 11,
-
     borderWidth: 2,
-
     borderColor: COLORS.white,
-
     backgroundColor: COLORS.white,
-
     elevation: 5,
   },
 
@@ -1179,27 +1176,17 @@ const styles = StyleSheet.create({
   },
 
   markerDriverInfo: {
-    flex: 1,
-
+    flexShrink: 1, 
+    flexGrow: 0, 
     minWidth: 0,
-
     marginLeft: 6,
   },
-
   markerDriverName: {
     fontSize: 9,
 
     fontWeight: "900",
 
     color: COLORS.primary,
-  },
-
-  markerDriverPhone: {
-    marginTop: 1,
-
-    fontSize: 7,
-
-    color: COLORS.muted,
   },
 
   markerPointer: {
@@ -1334,7 +1321,7 @@ const styles = StyleSheet.create({
 
     bottom: 30,
 
-    padding: 10,
+    padding: 5,
 
     borderRadius: 13,
 
@@ -1724,5 +1711,29 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.65,
   },
-  phoneVehicleContainer: {},
+  phoneVehicleContainer: {
+    flexDirection: "row", // ⭐ phone + vehicle in same row
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+    gap: 10, // RN 0.71+ supports gap
+  },
+
+  phoneRow: {
+    flexDirection: "row", // ⭐ icon + phone text in same row
+    alignItems: "center",
+    gap: 3,
+  },
+
+  phoneIcon: {
+    marginRight: 2, // extra spacing if gap not supported
+  },
+
+  markerDriverPhone: {
+    marginTop: 1,
+
+    fontSize: 7,
+
+    color: COLORS.muted,
+  },
 });
