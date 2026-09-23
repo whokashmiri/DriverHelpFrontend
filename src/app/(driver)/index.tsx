@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -77,6 +77,53 @@ type DriverTabName = "home" | "orders" | "shifts" | "stats";
 type DateFilter = "today" | "7days" | "30days" | "all";
 
 type OrderStatusFilter = "all" | "delivered" | "cancelled";
+function getFriendlyOrderError(error: unknown, fallback: string) {
+  const raw = getErrorMessage(error, fallback);
+
+  const normalized = raw.toLowerCase();
+
+  /*
+   * Expo / Android camera lifecycle
+   * errors should never be shown
+   * directly to users.
+   */
+  if (
+    normalized.includes("activityresultlauncher") ||
+    normalized.includes("illegalstateexception") ||
+    normalized.includes("launchcameraasync") ||
+    normalized.includes("unregistered")
+  ) {
+    return "Camera could not open. Please wait a moment and try again.";
+  }
+
+  if (
+    normalized.includes("network request failed") ||
+    normalized.includes("network error")
+  ) {
+    return "No internet connection. Please check your connection and try again.";
+  }
+
+  if (normalized.includes("timeout")) {
+    return "The request took too long. Please try again.";
+  }
+
+  if (
+    normalized.includes("complete the current order") ||
+    normalized.includes("active order")
+  ) {
+    return "You already have an active delivery. Complete or cancel it before creating another pickup.";
+  }
+
+  /*
+   * Avoid exposing huge native stack /
+   * implementation messages.
+   */
+  if (raw.length > 180) {
+    return fallback;
+  }
+
+  return raw;
+}
 
 export default function DriverHomeScreen() {
   const { t } = useTranslation();
@@ -147,6 +194,10 @@ export default function DriverHomeScreen() {
   const [orderError, setOrderError] = useState<string | null>(null);
 
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  const cameraOpeningRef = useRef(false);
+
+  const [isOpeningCamera, setIsOpeningCamera] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -391,10 +442,32 @@ export default function DriverHomeScreen() {
   };
 
   const takeOrderPhoto = async (type: "pickup" | "delivery") => {
+    /*
+     * Prevent double taps / concurrent
+     * ImagePicker launches.
+     */
+    if (cameraOpeningRef.current) {
+      return;
+    }
+
     try {
+      cameraOpeningRef.current = true;
+
+      setIsOpeningCamera(true);
+
       setOrderError(null);
 
+      /*
+       * PICKUP VALIDATION
+       */
       if (type === "pickup" && (activeOrder || uploadingPickup)) {
+        setOrderError(
+          t(
+            "orders.activeOrderExists",
+            "Complete or cancel the current delivery before creating another pickup.",
+          ),
+        );
+
         return;
       }
 
@@ -404,31 +477,50 @@ export default function DriverHomeScreen() {
         return;
       }
 
-      if (type === "delivery" && (!activeOrder || uploadingDelivery)) {
+      /*
+       * DELIVERY VALIDATION
+       */
+      if (type === "delivery" && !activeOrder) {
+        setOrderError(
+          t("orders.noActiveOrder", "There is no active delivery to complete."),
+        );
+
         return;
       }
 
+      if (type === "delivery" && uploadingDelivery) {
+        return;
+      }
+
+      /*
+       * CAMERA PERMISSION
+       */
       const permission = await ImagePicker.requestCameraPermissionsAsync();
 
       if (!permission.granted) {
         Alert.alert(
           t("common.permissionRequired", "Permission Required"),
-          t("orders.cameraPermission", "Camera permission is required."),
+          t(
+            "orders.cameraPermission",
+            "Camera permission is required to take delivery photos.",
+          ),
         );
 
         return;
       }
+
+      /*
+       * Give Android a short moment
+       * after the permission activity
+       * finishes before launching camera.
+       */
+      await new Promise((resolve) => setTimeout(resolve, 250));
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
 
         allowsEditing: false,
 
-        /*
-         * Camera does an initial lightweight
-         * reduction. Our image utility performs
-         * the final compression.
-         */
         quality: 0.8,
 
         cameraType: ImagePicker.CameraType.back,
@@ -442,7 +534,10 @@ export default function DriverHomeScreen() {
 
       if (!asset?.uri) {
         setOrderError(
-          t("orders.photoFailed", "Unable to read captured photo."),
+          t(
+            "orders.photoFailed",
+            "Unable to read the captured photo. Please try again.",
+          ),
         );
 
         return;
@@ -450,15 +545,12 @@ export default function DriverHomeScreen() {
 
       const capturedPhoto: OrderPhotoInput = {
         uri: asset.uri,
+
         time: new Date(),
       };
 
       /*
-       * OPTIMISTIC UI
-       *
-       * Show the original local image immediately.
-       * Do not make the user wait for compression
-       * or network upload.
+       * Optimistic preview.
        */
       if (type === "pickup") {
         setPickupPhoto(capturedPhoto);
@@ -476,12 +568,22 @@ export default function DriverHomeScreen() {
 
       void processDeliveryInBackground(capturedPhoto);
     } catch (error) {
-      setOrderError(
-        getErrorMessage(
-          error,
-          t("orders.photoFailed", "Unable to capture photo"),
-        ),
+      const message = getFriendlyOrderError(
+        error,
+        t("orders.photoFailed", "Unable to open the camera. Please try again."),
       );
+
+      setOrderError(message);
+
+      /*
+       * For camera-specific errors, also
+       * show a proper native alert.
+       */
+      Alert.alert(t("orders.cameraError", "Camera Error"), message);
+    } finally {
+      cameraOpeningRef.current = false;
+
+      setIsOpeningCamera(false);
     }
   };
 
@@ -555,18 +657,32 @@ export default function DriverHomeScreen() {
 
       setOrderElapsedSeconds(0);
     } catch (error) {
-      /*
-       * Optimistic operation failed,
-       * so rollback pickup UI.
-       */
       setPickupPhoto(null);
 
-      setOrderError(
-        getErrorMessage(
-          error,
-          t("orders.pickupUploadFailed", "Unable to save pickup photo"),
-        ),
+      const message = getFriendlyOrderError(
+        error,
+        t("orders.pickupUploadFailed", "Unable to save pickup photo"),
       );
+
+      const normalized = getErrorMessage(error, "").toLowerCase();
+
+      if (
+        normalized.includes("complete the current order") ||
+        normalized.includes("active order")
+      ) {
+        await loadOrders();
+
+        setOrderError(
+          t(
+            "orders.activeOrderRestored",
+            "Your active delivery has been restored.",
+          ),
+        );
+
+        return;
+      }
+
+      setOrderError(message);
     } finally {
       setUploadingPickup(false);
     }
@@ -823,12 +939,14 @@ export default function DriverHomeScreen() {
                 notesExpanded={notesExpanded}
                 setNotesExpanded={setNotesExpanded}
                 uploadingPickup={uploadingPickup}
+                isOpeningCamera={isOpeningCamera}
                 uploadingDelivery={uploadingDelivery}
                 isWorking={isWorking}
                 error={orderError}
                 onPickup={() => void takeOrderPhoto("pickup")}
                 onDelivery={() => void takeOrderPhoto("delivery")}
                 onCancelOrder={openCancelOrder}
+                onDismissError={() => setOrderError(null)}
               />
 
               <ShiftControl
@@ -1022,11 +1140,13 @@ function InlineOrderCreator({
   setNotesExpanded,
   uploadingPickup,
   uploadingDelivery,
+  isOpeningCamera,
   isWorking,
   error,
   onPickup,
   onDelivery,
   onCancelOrder,
+  onDismissError,
 }: {
   activeOrder: Order | null;
   onCancelOrder: () => void;
@@ -1046,7 +1166,8 @@ function InlineOrderCreator({
   setNotesExpanded: (value: boolean) => void;
 
   uploadingPickup: boolean;
-
+  isOpeningCamera: boolean;
+  onDismissError: () => void;
   uploadingDelivery: boolean;
 
   isWorking: boolean;
@@ -1059,7 +1180,7 @@ function InlineOrderCreator({
 }) {
   const { t } = useTranslation();
 
-  const isBusy = uploadingPickup || uploadingDelivery;
+  const isBusy = uploadingPickup || uploadingDelivery || isOpeningCamera;
 
   return (
     <View style={styles.inlineOrderCard}>
@@ -1178,6 +1299,14 @@ function InlineOrderCreator({
       {!!error && (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
+
+          <Pressable
+            onPress={onDismissError}
+            hitSlop={8}
+            style={styles.errorClose}
+          >
+            <X size={14} color={COLORS.error} />
+          </Pressable>
         </View>
       )}
 
@@ -2572,21 +2701,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  errorBox: {
-    marginTop: 8,
-
-    paddingHorizontal: 9,
-
-    paddingVertical: 7,
-
-    borderRadius: 8,
-
-    backgroundColor: COLORS.errorBackground,
-  },
-
   errorText: {
-    fontSize: 10,
-
+    fontSize: 9,
+    lineHeight: 14,
     color: COLORS.error,
   },
 
@@ -3589,5 +3706,36 @@ const styles = StyleSheet.create({
     fontSize: 5,
     fontWeight: "600",
     color: COLORS.primary,
+  },
+  errorBox: {
+    marginTop: 8,
+
+    minHeight: 38,
+
+    paddingLeft: 10,
+    paddingRight: 36,
+    paddingVertical: 8,
+
+    justifyContent: "center",
+
+    borderRadius: 8,
+
+    backgroundColor: COLORS.errorBackground,
+  },
+  errorClose: {
+    position: "absolute",
+
+    top: 5,
+    right: 5,
+
+    width: 26,
+    height: 26,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 7,
+
+    backgroundColor: "rgba(185,28,28,0.07)",
   },
 });
