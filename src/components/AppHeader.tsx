@@ -1,7 +1,6 @@
 import { FileText, MoreVertical, UserRound, X } from "lucide-react-native";
 
 import { useMemo, useState } from "react";
-
 import {
   Modal,
   Pressable,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import version from "../../version.json";
 
 import { router } from "expo-router";
 
@@ -74,6 +74,7 @@ export function AppHeader() {
       <View style={styles.container}>
         <View style={styles.brandContainer}>
           <Text style={styles.brand}>TOSH</Text>
+          <Text style={styles.version}>{version.build}</Text>
         </View>
 
         <View style={styles.actions}>
@@ -229,6 +230,8 @@ const styles = StyleSheet.create({
 
   brandContainer: {
     flex: 1,
+    flexDirection: "row",
+    gap: 5,
   },
 
   brand: {
@@ -238,6 +241,10 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
 
     letterSpacing: 1.3,
+  },
+  version: {
+    fontSize: 10,
+    fontWeight: "600",
   },
 
   actions: {
