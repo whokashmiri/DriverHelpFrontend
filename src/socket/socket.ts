@@ -2,12 +2,12 @@ import { io, Socket } from "socket.io-client";
 
 import { getToken } from "../api/client";
 
-const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
+// const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
 
 /*
  * Local development:
  */
-// const SOCKET_URL = "http://192.168.0.138:9000";
+const SOCKET_URL = "http://192.168.0.138:9000";
 
 const LOCATION_ACK_TIMEOUT_MS = 8000;
 
@@ -198,22 +198,18 @@ export function isSocketConnected() {
  * DRIVER:
  * SEND LIVE LOCATION
  */
-export function emitDriverLocation(
+export async function emitDriverLocation(
   payload: DriverLiveLocationPayload,
 ): Promise<LocationAcknowledgement> {
+  /*
+   * Mobile networks can switch between
+   * Wi-Fi / cellular while tracking.
+   */
+  const instance = socket?.connected ? socket : await connectSocket();
+
   return new Promise((resolve, reject) => {
-    if (!socket?.connected) {
-      reject(new Error("Socket is not connected"));
-
-      return;
-    }
-
     let finished = false;
 
-    /*
-     * Prevent a lost acknowledgement
-     * from keeping this Promise alive.
-     */
     const timeout = setTimeout(
       () => {
         if (finished) {
@@ -228,7 +224,7 @@ export function emitDriverLocation(
       LOCATION_ACK_TIMEOUT_MS,
     );
 
-    socket.emit(
+    instance.emit(
       "driver:location",
 
       payload,
@@ -259,6 +255,118 @@ export function emitDriverLocation(
     );
   });
 }
+
+//with logs
+// export async function emitDriverLocation(
+//   payload: DriverLiveLocationPayload,
+// ): Promise<LocationAcknowledgement> {
+//   /*
+//    * Mobile networks can switch between
+//    * Wi-Fi / cellular while tracking.
+//    */
+//   const instance = socket?.connected ? socket : await connectSocket();
+
+//   console.log("[Socket][Location] Emitting:", {
+//     socketId: instance.id,
+
+//     event: "driver:location",
+
+//     latitude: payload.latitude,
+
+//     longitude: payload.longitude,
+
+//     accuracy: payload.accuracy ?? null,
+
+//     speed: payload.speed ?? null,
+
+//     heading: payload.heading ?? null,
+
+//     sentAt: new Date().toISOString(),
+//   });
+
+//   return new Promise((resolve, reject) => {
+//     let finished = false;
+
+//     const timeout = setTimeout(
+//       () => {
+//         if (finished) {
+//           return;
+//         }
+
+//         finished = true;
+
+//         console.warn("[Socket][Location] ACK timeout:", {
+//           socketId: instance.id,
+
+//           latitude: payload.latitude,
+
+//           longitude: payload.longitude,
+//         });
+
+//         reject(new Error("Location acknowledgement timed out"));
+//       },
+
+//       LOCATION_ACK_TIMEOUT_MS,
+//     );
+
+//     instance.emit(
+//       "driver:location",
+
+//       payload,
+
+//       (response: LocationAcknowledgement) => {
+//         if (finished) {
+//           return;
+//         }
+
+//         finished = true;
+
+//         clearTimeout(timeout);
+
+//         console.log("[Socket][Location] ACK received:", {
+//           socketId: instance.id,
+
+//           response,
+//         });
+
+//         if (!response) {
+//           console.warn("[Socket][Location] Empty ACK");
+
+//           reject(new Error("No location acknowledgement received"));
+
+//           return;
+//         }
+
+//         if (!response.success) {
+//           console.warn("[Socket][Location] Server rejected location:", {
+//             message: response.message,
+
+//             latitude: payload.latitude,
+
+//             longitude: payload.longitude,
+//           });
+
+//           reject(new Error(response.message || "Unable to update location"));
+
+//           return;
+//         }
+
+//         console.log("[Socket][Location] Sent successfully:", {
+//           latitude: payload.latitude,
+
+//           longitude: payload.longitude,
+
+//           recordedAt: response.recordedAt,
+
+//           locationId: response.locationId,
+//         });
+
+//         resolve(response);
+//       },
+//     );
+//   });
+// }
+
 
 /*
  * SUPERVISOR:
