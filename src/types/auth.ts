@@ -1,7 +1,4 @@
-export type UserRole =
-  | "driver"
-  | "supervisor"
-  | "admin";
+export type UserRole = "driver" | "supervisor" | "admin";
 
 export interface AuthUser {
   id: string;
@@ -13,6 +10,8 @@ export interface AuthUser {
   role: UserRole;
 
   isActive: boolean;
+
+  canDeliverOrders: boolean;
 
   supervisor?: string | null;
 

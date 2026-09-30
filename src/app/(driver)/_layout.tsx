@@ -1,10 +1,13 @@
-
 import { Redirect, Stack } from "expo-router";
+
+import { useAppMode } from "../../context/AppModeContext";
 
 import { useAuth } from "../../hooks/useAuth";
 
 export default function DriverLayout() {
   const { user, isAuthenticated, isLoading } = useAuth();
+
+  const { appMode } = useAppMode();
 
   if (isLoading) {
     return null;
@@ -14,7 +17,14 @@ export default function DriverLayout() {
     return <Redirect href="/(auth)/login" />;
   }
 
-  if (user.role !== "driver") {
+  const isRealDriver = user.role === "driver";
+
+  const isSupervisorInDriverMode =
+    user.role === "supervisor" &&
+    user.canDeliverOrders === true &&
+    appMode === "driver";
+
+  if (!isRealDriver && !isSupervisorInDriverMode) {
     return <Redirect href="/" />;
   }
 
@@ -22,6 +32,7 @@ export default function DriverLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
+
         contentStyle: {
           backgroundColor: "#F8FAFC",
         },

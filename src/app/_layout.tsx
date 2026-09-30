@@ -1,19 +1,20 @@
 import { Stack } from "expo-router";
 
 import { AuthProvider } from "@/context/AuthContext";
+import { AppModeProvider } from "@/context/AppModeContext";
 import { LanguageProvider } from "../context/LanguageContext";
 
 export default function RootLayout() {
-  console.log("ROOT LAYOUT RUNNING");
-
   return (
     <LanguageProvider>
       <AuthProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-          }}
-        />
+        <AppModeProvider>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+            }}
+          />
+        </AppModeProvider>
       </AuthProvider>
     </LanguageProvider>
   );

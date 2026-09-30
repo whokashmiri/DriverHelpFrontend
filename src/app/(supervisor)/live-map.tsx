@@ -131,12 +131,12 @@ export default function LiveMapScreen() {
    * LIVE SOCKET UPDATES
    */
   useEffect(() => {
+    console.log("[LiveMap] Registering driver location listener");
+
     const cleanup = onDriverLocationUpdate(
       (update: DriverLiveLocationUpdate) => {
-        /*
-         * Keep latest active-shift
-         * status separately.
-         */
+       
+
         setLiveWorkingStatus((current) => ({
           ...current,
 
@@ -144,28 +144,26 @@ export default function LiveMapScreen() {
         }));
 
         setLocations((current) => {
+        
+
           const index = current.findIndex(
             (item) => getDriverId(item) === update.driverId,
           );
 
-          /*
-           * Driver has no cached
-           * REST location yet.
-           *
-           * Reload so we get name,
-           * shortName, phone,
-           * profile picture etc.
-           */
           if (index === -1) {
+            console.warn("[LiveMap][State] Driver NOT FOUND:", update.driverId);
+
             void loadLocations();
 
             return current;
           }
 
+          const previous = current[index];
+
           const next = [...current];
 
           next[index] = {
-            ...next[index],
+            ...previous,
 
             latitude: update.latitude,
 
@@ -185,7 +183,11 @@ export default function LiveMapScreen() {
       },
     );
 
-    return cleanup;
+    return () => {
+      console.log("[LiveMap] Removing driver location listener");
+
+      cleanup();
+    };
   }, [loadLocations]);
 
   /*
@@ -1176,8 +1178,8 @@ const styles = StyleSheet.create({
   },
 
   markerDriverInfo: {
-    flexShrink: 1, 
-    flexGrow: 0, 
+    flexShrink: 1,
+    flexGrow: 0,
     minWidth: 0,
     marginLeft: 6,
   },
