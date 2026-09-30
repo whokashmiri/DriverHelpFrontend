@@ -1,4 +1,11 @@
-import { FileText, MoreVertical, UserRound, X } from "lucide-react-native";
+import {
+  FileText,
+  LayoutDashboard,
+  MoreVertical,
+  Truck,
+  UserRound,
+  X,
+} from "lucide-react-native";
 
 import { useMemo, useState } from "react";
 import {
@@ -16,6 +23,8 @@ import { router } from "expo-router";
 import { useLanguage } from "../context/LanguageContext";
 import { useAuth } from "../hooks/useAuth";
 
+import { useAppMode } from "../context/AppModeContext";
+
 const COLORS = {
   black: "#0A090C",
   light: "#F0EDEE",
@@ -27,7 +36,14 @@ const COLORS = {
 export function AppHeader() {
   const { user } = useAuth();
 
+  console.log("[AppHeader] AUTH USER:", JSON.stringify(user, null, 2));
+
   const { language, setLanguage } = useLanguage();
+
+  // const canSwitchMode =
+  //   user?.role === "supervisor" && user?.canDeliverOrders === true;
+
+  const { appMode, canSwitchMode, toggleAppMode } = useAppMode();
 
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -63,6 +79,26 @@ export function AppHeader() {
     }
   };
 
+  const handleModeSwitch = () => {
+    if (!canSwitchMode) {
+      return;
+    }
+
+    closeMenu();
+
+    const nextMode = appMode === "supervisor" ? "driver" : "supervisor";
+
+    toggleAppMode();
+
+    if (nextMode === "driver") {
+      router.replace("/(driver)");
+
+      return;
+    }
+
+    router.replace("/(supervisor)");
+  };
+
   const handleTermsPress = () => {
     closeMenu();
 
@@ -76,8 +112,37 @@ export function AppHeader() {
           <Text style={styles.brand}>TOSH</Text>
           <Text style={styles.version}>{version.build}</Text>
         </View>
-
         <View style={styles.actions}>
+          {canSwitchMode && (
+            <TouchableOpacity
+              style={[
+                styles.headerModeToggle,
+
+                appMode === "driver"
+                  ? styles.headerModeToggleDriver
+                  : styles.headerModeToggleSupervisor,
+              ]}
+              onPress={() => void handleModeSwitch()}
+              activeOpacity={0.8}
+            >
+              {appMode === "supervisor" ? (
+                <Truck size={14} color={COLORS.white} />
+              ) : (
+                <LayoutDashboard size={14} color={COLORS.white} />
+              )}
+
+              <Text style={styles.headerModeToggleText} numberOfLines={1}>
+                {appMode === "supervisor"
+                  ? isArabic
+                    ? "سائق"
+                    : "Driver"
+                  : isArabic
+                    ? "المشرف"
+                    : "Dashboard"}
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <View style={styles.languageToggle}>
             <Pressable
               onPress={() => setLanguage("en")}
@@ -95,25 +160,6 @@ export function AppHeader() {
                 ]}
               >
                 {labels.english}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => setLanguage("ar")}
-              style={[
-                styles.languageButton,
-
-                language === "ar" && styles.languageButtonActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.languageText,
-
-                  language === "ar" && styles.languageTextActive,
-                ]}
-              >
-                {labels.arabic}
               </Text>
             </Pressable>
           </View>
@@ -243,7 +289,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.3,
   },
   version: {
-    fontSize: 10,
+    fontSize: 5,
     fontWeight: "600",
   },
 
@@ -467,5 +513,88 @@ const styles = StyleSheet.create({
     fontWeight: "700",
 
     color: COLORS.black,
+  },
+
+  modeSwitch: {
+    minHeight: 56,
+
+    marginVertical: 6,
+
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+
+    flexDirection: "row",
+    alignItems: "center",
+
+    borderRadius: 12,
+  },
+
+  modeSwitchSupervisor: {
+    backgroundColor: COLORS.primary,
+  },
+
+  modeSwitchDriver: {
+    backgroundColor: COLORS.secondary,
+  },
+
+  modeSwitchIcon: {
+    width: 34,
+    height: 34,
+
+    marginRight: 9,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    borderRadius: 9,
+
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+
+  modeSwitchContent: {
+    flex: 1,
+  },
+
+  modeSwitchTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+
+    color: COLORS.white,
+  },
+
+  modeSwitchSubtitle: {
+    marginTop: 2,
+
+    fontSize: 8,
+
+    color: "rgba(255,255,255,0.78)",
+  },
+
+  headerModeToggle: {
+    height: 34,
+
+    paddingHorizontal: 9,
+
+    flexDirection: "row",
+    alignItems: "center",
+
+    gap: 5,
+
+    borderRadius: 9,
+  },
+
+  headerModeToggleSupervisor: {
+    backgroundColor: COLORS.primary,
+  },
+
+  headerModeToggleDriver: {
+    backgroundColor: COLORS.secondary,
+  },
+
+  headerModeToggleText: {
+    fontSize: 10,
+    fontWeight: "800",
+
+    color: COLORS.white,
   },
 });
