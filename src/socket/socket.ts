@@ -2,12 +2,12 @@ import { io, Socket } from "socket.io-client";
 
 import { getToken } from "../api/client";
 
-// const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
+const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
 
 /*
  * Local development:
  */
-const SOCKET_URL = "http://192.168.0.138:9000";
+// const SOCKET_URL = "http://192.168.0.138:9000";
 
 const LOCATION_ACK_TIMEOUT_MS = 8000;
 
@@ -87,19 +87,19 @@ function createSocket() {
   });
 
   socket.on("connect", () => {
-    console.log("[Socket] Connected:", socket?.id);
+    // console.log("[Socket] Connected:", socket?.id);
   });
 
   socket.on("connect_error", (error) => {
-    console.log("[Socket] Connect error:", error.message);
+    // console.log("[Socket] Connect error:", error.message);
   });
 
   socket.on("disconnect", (reason) => {
-    console.log("[Socket] Disconnected:", reason);
+    // console.log("[Socket] Disconnected:", reason);
   });
 
   socket.io.on("reconnect", (attempt) => {
-    console.log("[Socket] Reconnected:", attempt);
+    // console.log("[Socket] Reconnected:", attempt);
   });
 
   return socket;
@@ -366,7 +366,6 @@ export async function emitDriverLocation(
 //     );
 //   });
 // }
-
 
 /*
  * SUPERVISOR:
