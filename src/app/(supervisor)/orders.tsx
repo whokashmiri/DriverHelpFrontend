@@ -1,13 +1,10 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 
+import { useAuth } from "../../hooks/useAuth";
 
 import {
   ActivityIndicator,
@@ -20,44 +17,32 @@ import {
   View,
 } from "react-native";
 
-import {
-  router,
-} from "expo-router";
+import { router } from "expo-router";
 
-import {
-  useTranslation,
-} from "react-i18next";
+import { useTranslation } from "react-i18next";
 
-import {
-  X,
-  CalendarDays
-} from "lucide-react-native";
+import { CalendarDays, X } from "lucide-react-native";
 
-import {
-  AppScreen,
-} from "../../components/AppScreen";
+import { AppScreen } from "../../components/AppScreen";
 
 import {
   getSupervisorActiveOrders,
   getSupervisorOrders,
 } from "../../api/orderApi";
 
-import {
-  getMyDrivers,
-} from "../../api/driverApi";
+import { getMyDrivers } from "../../api/driverApi";
 
-import {
-  getErrorMessage,
-} from "../../utils";
+import { getErrorMessage } from "../../utils";
 
-import type {
-  Order,
-  SupervisorOrderStatusFilter,
-} from "../../types/order";
+import type { Order, SupervisorOrderStatusFilter } from "../../types/order";
 
-import type {
-  Driver,
-} from "../../types/driver";
+import type { Driver } from "../../types/driver";
+
+type OrderDriverFilter = Omit<Driver, "role"> & {
+  role: "driver" | "supervisor";
+
+  isSupervisorSelf?: boolean;
+};
 
 const COLORS = {
   black: "#0A090C",
@@ -76,297 +61,199 @@ const COLORS = {
   successBackground: "#EAF7EE",
 };
 
-type DateFilter =
-  | "today"
-  | "7days"
-  | "30days"
-  | "custom"
-  | "all";
+type DateFilter = "today" | "7days" | "30days" | "custom" | "all";
 
 export default function SupervisorOrdersScreen() {
-  const { t } =
-    useTranslation();
-
+  const { t } = useTranslation();
+  const { user } = useAuth();
   /*
    * Active orders
    */
-  const [
-    activeOrders,
-    setActiveOrders,
-  ] = useState<Order[]>([]);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
 
-  const [
-    isLoadingActive,
-    setIsLoadingActive,
-  ] = useState(true);
+  const [isLoadingActive, setIsLoadingActive] = useState(true);
 
-  const [
-    activeError,
-    setActiveError,
-  ] = useState<string | null>(
-    null,
-  );
+  const [activeError, setActiveError] = useState<string | null>(null);
 
   /*
    * History
    */
-  const [
-    historyOrders,
-    setHistoryOrders,
-  ] = useState<Order[]>([]);
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
 
-  const [
-    drivers,
-    setDrivers,
-  ] = useState<Driver[]>([]);
+  const [drivers, setDrivers] = useState<OrderDriverFilter[]>([]);
 
-  const [
-    historyLoading,
-    setHistoryLoading,
-  ] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  const [
-    historyError,
-    setHistoryError,
-  ] = useState<string | null>(
-    null,
-  );
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   /*
    * Pagination
    */
-  const [page, setPage] =
-    useState(1);
+  const [page, setPage] = useState(1);
 
-  const [
-    totalPages,
-    setTotalPages,
-  ] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const [
-    totalOrders,
-    setTotalOrders,
-  ] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(0);
 
   /*
    * Filters
    */
-  const [
-    selectedDriverId,
-    setSelectedDriverId,
-  ] =
-    useState<string | null>(
-      null,
-    );
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
-  const [
-    statusFilter,
-    setStatusFilter,
-  ] =
-    useState<SupervisorOrderStatusFilter>(
-      "all",
-    );
+  const [statusFilter, setStatusFilter] =
+    useState<SupervisorOrderStatusFilter>("all");
 
-  const [
-    dateFilter,
-    setDateFilter,
-  ] =
-    useState<DateFilter>(
-      "today",
-    );
+  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
 
+  const [customFromDate, setCustomFromDate] = useState<Date | null>(null);
 
-    const [
-  customFromDate,
-  setCustomFromDate,
-] = useState<Date | null>(
-  null,
-);
-
-const [
-  customToDate,
-  setCustomToDate,
-] = useState<Date | null>(
-  null,
-);
+  const [customToDate, setCustomToDate] = useState<Date | null>(null);
   /*
    * Image preview modal
    */
-  const [
-    previewImage,
-    setPreviewImage,
-  ] =
-    useState<string | null>(
-      null,
-    );
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   /*
    * ACTIVE ORDERS
    */
-  const loadActiveOrders =
-    useCallback(async () => {
-      try {
-        setActiveError(null);
+  const loadActiveOrders = useCallback(async () => {
+    try {
+      setActiveError(null);
 
-        const response =
-          await getSupervisorActiveOrders();
+      const response = await getSupervisorActiveOrders();
 
-        const active =
-          (
-            response.orders ??
-            []
-          ).filter(
-            (order) =>
-              order.status ===
-              "picked_up",
-          );
+      const active = (response.orders ?? []).filter(
+        (order) => order.status === "picked_up",
+      );
 
-        setActiveOrders(
-          active,
-        );
-      } catch (error) {
-        setActiveError(
-          getErrorMessage(
-            error,
-            t(
-              "orders.loadFailed",
-              "Unable to load active orders",
-            ),
-          ),
-        );
-      } finally {
-        setIsLoadingActive(
-          false,
-        );
-      }
-    }, [t]);
+      setActiveOrders(active);
+    } catch (error) {
+      setActiveError(
+        getErrorMessage(
+          error,
+          t("orders.loadFailed", "Unable to load active orders"),
+        ),
+      );
+    } finally {
+      setIsLoadingActive(false);
+    }
+  }, [t]);
 
   /*
    * DRIVERS
    */
-  const loadDrivers =
-    useCallback(async () => {
-      try {
-        const response =
-          await getMyDrivers();
+  const loadDrivers = useCallback(async () => {
+    try {
+      const response = await getMyDrivers();
 
-        setDrivers(
-          response.drivers ??
-            [],
-        );
-      } catch {
-        /*
-         * History can still
-         * work without this.
-         */
-      }
-    }, []);
+      const managedDrivers: OrderDriverFilter[] = response.drivers ?? [];
+
+      const supervisorRow: OrderDriverFilter | null =
+        user?.role === "supervisor" && user.canDeliverOrders === true
+          ? {
+              _id: user.id,
+
+              id: user.id,
+
+              iqamaId: user.iqamaId,
+
+              name: user.name,
+
+              phone: user.phone ?? null,
+
+              role: "supervisor",
+
+              isActive: user.isActive,
+
+              supervisor: null,
+
+              isSupervisorSelf: true,
+            }
+          : null;
+
+      setDrivers(
+        supervisorRow ? [supervisorRow, ...managedDrivers] : managedDrivers,
+      );
+    } catch {
+      /*
+       * History still works
+       * without filter options.
+       */
+    }
+  }, [
+    user?.id,
+    user?.role,
+    user?.canDeliverOrders,
+    user?.iqamaId,
+    user?.name,
+    user?.phone,
+    user?.isActive,
+  ]);
 
   /*
    * HISTORY
    */
-  const loadHistory =
-    useCallback(async () => {
-      try {
-        setHistoryLoading(
-          true,
-        );
+  const loadHistory = useCallback(async () => {
+    try {
+      setHistoryLoading(true);
 
-        setHistoryError(
-          null,
-        );
+      setHistoryError(null);
 
-       const {
-  from,
-  to,
-} =
-  dateFilter === "custom"
-    ? {
-        from:
-          customFromDate
-            ? formatDateForApi(
-                customFromDate,
-              )
-            : undefined,
+      const { from, to } =
+        dateFilter === "custom"
+          ? {
+              from: customFromDate
+                ? formatDateForApi(customFromDate)
+                : undefined,
 
-        to:
-          customToDate
-            ? formatDateForApi(
-                customToDate,
-              )
-            : undefined,
-      }
-    : getDateRange(
-        dateFilter,
+              to: customToDate ? formatDateForApi(customToDate) : undefined,
+            }
+          : getDateRange(dateFilter);
+
+      const response = await getSupervisorOrders({
+        page,
+
+        limit: 10,
+
+        driverId: selectedDriverId || undefined,
+
+        status: statusFilter,
+
+        from,
+
+        to,
+      });
+
+      setHistoryOrders(response.orders ?? []);
+
+      setTotalPages(response.pagination?.totalPages ?? 1);
+
+      setTotalOrders(response.pagination?.total ?? 0);
+    } catch (error) {
+      setHistoryError(
+        getErrorMessage(
+          error,
+          t("orders.historyLoadFailed", "Unable to load order history"),
+        ),
       );
-
-        const response =
-          await getSupervisorOrders({
-            page,
-
-            limit: 10,
-
-            driverId:
-              selectedDriverId ||
-              undefined,
-
-            status:
-              statusFilter,
-
-            from,
-
-            to,
-          });
-
-        setHistoryOrders(
-          response.orders ??
-            [],
-        );
-
-        setTotalPages(
-          response.pagination
-            ?.totalPages ??
-            1,
-        );
-
-        setTotalOrders(
-          response.pagination
-            ?.total ??
-            0,
-        );
-      } catch (error) {
-        setHistoryError(
-          getErrorMessage(
-            error,
-            t(
-              "orders.historyLoadFailed",
-              "Unable to load order history",
-            ),
-          ),
-        );
-      } finally {
-        setHistoryLoading(
-          false,
-        );
-      }
-    }, [
-      page,
-      selectedDriverId,
-      statusFilter,
-      dateFilter,
-      customFromDate,
-  customToDate,
-      t,
-    ]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [
+    page,
+    selectedDriverId,
+    statusFilter,
+    dateFilter,
+    customFromDate,
+    customToDate,
+    t,
+  ]);
 
   useEffect(() => {
     void loadActiveOrders();
 
     void loadDrivers();
-  }, [
-    loadActiveOrders,
-    loadDrivers,
-  ]);
+  }, [loadActiveOrders, loadDrivers]);
 
   useEffect(() => {
     void loadHistory();
@@ -375,67 +262,25 @@ const [
   return (
     <AppScreen>
       <ScrollView
-        style={
-          styles.screen
-        }
-        contentContainerStyle={
-          styles.content
-        }
-        showsVerticalScrollIndicator={
-          false
-        }
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
       >
-        <Pressable
-          onPress={() =>
-            router.back()
-          }
-          style={
-            styles.backButton
-          }
-        >
-          <Text
-            style={
-              styles.backText
-            }
-          >
-            ←{" "}
-            {t(
-              "common.back",
-              "Back",
-            )}
-          </Text>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backText}>← {t("common.back", "Back")}</Text>
         </Pressable>
 
         {/* =========================
             ACTIVE ORDERS
         ========================== */}
 
-        <View
-          style={
-            styles.heading
-          }
-        >
-          <View
-            style={
-              styles.headingLeft
-            }
-          >
-            <Text
-              style={
-                styles.title
-              }
-            >
-              {t(
-                "orders.activeOrders",
-                "Active Orders",
-              )}
+        <View style={styles.heading}>
+          <View style={styles.headingLeft}>
+            <Text style={styles.title}>
+              {t("orders.activeOrders", "Active Orders")}
             </Text>
 
-            <Text
-              style={
-                styles.subtitle
-              }
-            >
+            <Text style={styles.subtitle}>
               {t(
                 "orders.supervisorSubtitle",
                 "View active orders from your drivers",
@@ -444,138 +289,54 @@ const [
           </View>
 
           {!isLoadingActive && (
-            <View
-              style={
-                styles.countBadge
-              }
-            >
-              <Text
-                style={
-                  styles.countValue
-                }
-              >
-                {
-                  activeOrders.length
-                }
-              </Text>
+            <View style={styles.countBadge}>
+              <Text style={styles.countValue}>{activeOrders.length}</Text>
 
-              <Text
-                style={
-                  styles.countLabel
-                }
-              >
-                {t(
-                  "orders.active",
-                  "Active",
-                )}
+              <Text style={styles.countLabel}>
+                {t("orders.active", "Active")}
               </Text>
             </View>
           )}
         </View>
 
         {isLoadingActive ? (
-          <View
-            style={
-              styles.loading
-            }
-          >
-            <ActivityIndicator
-              color={
-                COLORS.primary
-              }
-            />
+          <View style={styles.loading}>
+            <ActivityIndicator color={COLORS.primary} />
 
-            <Text
-              style={
-                styles.loadingText
-              }
-            >
-              {t(
-                "orders.loading",
-                "Loading active orders...",
-              )}
+            <Text style={styles.loadingText}>
+              {t("orders.loading", "Loading active orders...")}
             </Text>
           </View>
         ) : activeError ? (
-          <View
-            style={
-              styles.errorBox
-            }
-          >
-            <Text
-              style={
-                styles.errorText
-              }
-            >
-              {activeError}
-            </Text>
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{activeError}</Text>
 
             <Pressable
               onPress={() => {
-                setIsLoadingActive(
-                  true,
-                );
+                setIsLoadingActive(true);
 
                 void loadActiveOrders();
               }}
-              style={({
-                pressed,
-              }) => [
+              style={({ pressed }) => [
                 styles.retryButton,
 
-                pressed &&
-                  styles.buttonPressed,
+                pressed && styles.buttonPressed,
               ]}
             >
-              <Text
-                style={
-                  styles.retryText
-                }
-              >
-                {t(
-                  "common.retry",
-                  "Retry",
-                )}
-              </Text>
+              <Text style={styles.retryText}>{t("common.retry", "Retry")}</Text>
             </Pressable>
           </View>
-        ) : activeOrders.length ===
-          0 ? (
-          <View
-            style={
-              styles.emptyCard
-            }
-          >
-            <View
-              style={
-                styles.iconCircle
-              }
-            >
-              <Text
-                style={
-                  styles.iconText
-                }
-              >
-                O
-              </Text>
+        ) : activeOrders.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <View style={styles.iconCircle}>
+              <Text style={styles.iconText}>O</Text>
             </View>
 
-            <Text
-              style={
-                styles.emptyTitle
-              }
-            >
-              {t(
-                "orders.noActiveOrders",
-                "No active orders",
-              )}
+            <Text style={styles.emptyTitle}>
+              {t("orders.noActiveOrders", "No active orders")}
             </Text>
 
-            <Text
-              style={
-                styles.emptyText
-              }
-            >
+            <Text style={styles.emptyText}>
               {t(
                 "orders.noActiveOrdersDescription",
                 "Your drivers currently have no active pickup orders.",
@@ -583,216 +344,95 @@ const [
             </Text>
           </View>
         ) : (
-          <View
-            style={
-              styles.list
-            }
-          >
-            {activeOrders.map(
-              (order) => {
-                const rider =
-                  typeof order.rider ===
-                  "string"
-                    ? null
-                    : order.rider;
+          <View style={styles.list}>
+            {activeOrders.map((order) => {
+              const rider =
+                typeof order.rider === "string" ? null : order.rider;
 
-                return (
-                  <View
-                    key={
-                      order._id
-                    }
-                    style={
-                      styles.orderCard
-                    }
-                  >
-                    <Pressable
-                      onPress={() => {
-                        if (
-                          order
-                            .pickupPhoto
-                            ?.url
-                        ) {
-                          setPreviewImage(
-                            order
-                              .pickupPhoto
-                              .url,
-                          );
-                        }
-                      }}
-                    >
-                      {order
-                        .pickupPhoto
-                        ?.url ? (
-                        <Image
-                          source={{
-                            uri:
-                              order
-                                .pickupPhoto
-                                .url,
-                          }}
-                          style={
-                            styles.orderImage
-                          }
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View
-                          style={
-                            styles.orderImagePlaceholder
-                          }
-                        >
-                          <Text
-                            style={
-                              styles.orderImageText
-                            }
-                          >
-                            O
-                          </Text>
-                        </View>
-                      )}
-                    </Pressable>
-
-                    <Pressable
-                      style={
-                        styles.orderInfo
+              return (
+                <View key={order._id} style={styles.orderCard}>
+                  <Pressable
+                    onPress={() => {
+                      if (order.pickupPhoto?.url) {
+                        setPreviewImage(order.pickupPhoto.url);
                       }
-                      onPress={() => {
-                        if (
-                          !rider?._id
-                        ) {
-                          return;
-                        }
-
-                        router.push({
-                          pathname:
-                            "/(supervisor)/driver-details",
-
-                          params: {
-                            driverId:
-                              rider._id,
-                          },
-                        });
-                      }}
-                    >
-                      <View
-                        style={
-                          styles.orderTopRow
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.driverName
-                          }
-                          numberOfLines={
-                            1
-                          }
-                        >
-                          {rider?.name ??
-                            t(
-                              "drivers.driver",
-                              "Driver",
-                            )}
-                        </Text>
-
-                        <View
-                          style={
-                            styles.activeBadge
-                          }
-                        >
-                          <View
-                            style={
-                              styles.activeDot
-                            }
-                          />
-
-                          <Text
-                            style={
-                              styles.activeText
-                            }
-                          >
-                            {t(
-                              "orders.active",
-                              "Active",
-                            )}
-                          </Text>
-                        </View>
+                    }}
+                  >
+                    {order.pickupPhoto?.url ? (
+                      <Image
+                        source={{
+                          uri: order.pickupPhoto.url,
+                        }}
+                        style={styles.orderImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.orderImagePlaceholder}>
+                        <Text style={styles.orderImageText}>O</Text>
                       </View>
+                    )}
+                  </Pressable>
 
-                      {!!order.orderId && (
-                        <Text
-                          style={
-                            styles.orderIdText
-                          }
-                        >
-                          #
-                          {
-                            order.orderId
-                          }
-                        </Text>
-                      )}
+                  <Pressable
+                    style={styles.orderInfo}
+                    onPress={() => {
+                      if (!rider?._id) {
+                        return;
+                      }
 
-                      {!!rider?.iqamaId && (
-                        <Text
-                          style={
-                            styles.driverSub
-                          }
-                          numberOfLines={
-                            1
-                          }
-                        >
-                          {t(
-                            "profile.iqama",
-                            "Iqama",
-                          )}
-                          :{" "}
-                          {
-                            rider.iqamaId
-                          }
-                        </Text>
-                      )}
+                      router.push({
+                        pathname: "/(supervisor)/driver-details",
 
-                      <Text
-                        style={
-                          styles.pickupTime
-                        }
-                      >
-                        {t(
-                          "orders.pickupTime",
-                          "Pickup",
-                        )}
-                        :{" "}
-                        {formatOrderTime(
-                          order.pickupTime,
-                        )}
+                        params: {
+                          driverId: rider._id,
+                        },
+                      });
+                    }}
+                  >
+                    <View style={styles.orderTopRow}>
+                      <Text style={styles.driverName} numberOfLines={1}>
+                        {rider?.name
+                          ? rider._id === user?.id
+                            ? `${rider.name} • ${t("common.you", "You")}`
+                            : rider.name
+                          : t("drivers.driver", "Driver")}
                       </Text>
 
-                      {!!order.notes?.trim() && (
-                        <Text
-                          style={
-                            styles.notes
-                          }
-                          numberOfLines={
-                            2
-                          }
-                        >
-                          {
-                            order.notes
-                          }
-                        </Text>
-                      )}
-                    </Pressable>
+                      <View style={styles.activeBadge}>
+                        <View style={styles.activeDot} />
 
-                    <Text
-                      style={
-                        styles.chevron
-                      }
-                    >
-                      ›
+                        <Text style={styles.activeText}>
+                          {t("orders.active", "Active")}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {!!order.orderId && (
+                      <Text style={styles.orderIdText}>#{order.orderId}</Text>
+                    )}
+
+                    {!!rider?.iqamaId && (
+                      <Text style={styles.driverSub} numberOfLines={1}>
+                        {t("profile.iqama", "Iqama")}: {rider.iqamaId}
+                      </Text>
+                    )}
+
+                    <Text style={styles.pickupTime}>
+                      {t("orders.pickupTime", "Pickup")}:{" "}
+                      {formatOrderTime(order.pickupTime)}
                     </Text>
-                  </View>
-                );
-              },
-            )}
+
+                    {!!order.notes?.trim() && (
+                      <Text style={styles.notes} numberOfLines={2}>
+                        {order.notes}
+                      </Text>
+                    )}
+                  </Pressable>
+
+                  <Text style={styles.chevron}>›</Text>
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -800,193 +440,85 @@ const [
             ORDER HISTORY
         ========================== */}
 
-        <View
-          style={
-            styles.historySection
-          }
-        >
-          <View
-            style={
-              styles.historyHeading
-            }
-          >
+        <View style={styles.historySection}>
+          <View style={styles.historyHeading}>
             <View
               style={{
                 flex: 1,
               }}
             >
-              <Text
-                style={
-                  styles.historyTitle
-                }
-              >
-                {t(
-                  "orders.history",
-                  "Order History",
-                )}
+              <Text style={styles.historyTitle}>
+                {t("orders.history", "Order History")}
               </Text>
 
-              <Text
-                style={
-                  styles.historySubtitle
-                }
-              >
-                {totalOrders}{" "}
-                {t(
-                  "orders.orders",
-                  "orders",
-                )}
+              <Text style={styles.historySubtitle}>
+                {totalOrders} {t("orders.orders", "orders")}
               </Text>
             </View>
           </View>
 
- <HistoryFilters
-  drivers={
-    drivers
-  }
-  selectedDriverId={
-    selectedDriverId
-  }
-  statusFilter={
-    statusFilter
-  }
-  dateFilter={
-    dateFilter
-  }
-  customFromDate={
-    customFromDate
-  }
-  customToDate={
-    customToDate
-  }
-  onDriverChange={(
-    value,
-  ) => {
-    setPage(1);
+          <HistoryFilters
+            drivers={drivers}
+            selectedDriverId={selectedDriverId}
+            statusFilter={statusFilter}
+            dateFilter={dateFilter}
+            customFromDate={customFromDate}
+            customToDate={customToDate}
+            onDriverChange={(value) => {
+              setPage(1);
 
-    setSelectedDriverId(
-      value,
-    );
-  }}
-  onStatusChange={(
-    value,
-  ) => {
-    setPage(1);
+              setSelectedDriverId(value);
+            }}
+            onStatusChange={(value) => {
+              setPage(1);
 
-    setStatusFilter(
-      value,
-    );
-  }}
-  onDateChange={(
-    value,
-  ) => {
-    setPage(1);
+              setStatusFilter(value);
+            }}
+            onDateChange={(value) => {
+              setPage(1);
 
-    setDateFilter(
-      value,
-    );
-  }}
-  onCustomFromDateChange={(
-    date,
-  ) => {
-    setPage(1);
+              setDateFilter(value);
+            }}
+            onCustomFromDateChange={(date) => {
+              setPage(1);
 
-    setCustomFromDate(
-      date,
-    );
-  }}
-  onCustomToDateChange={(
-    date,
-  ) => {
-    setPage(1);
+              setCustomFromDate(date);
+            }}
+            onCustomToDateChange={(date) => {
+              setPage(1);
 
-    setCustomToDate(
-      date,
-    );
-  }}
-/>
-         
+              setCustomToDate(date);
+            }}
+          />
 
           {historyLoading ? (
-            <View
-              style={
-                styles.historyLoader
-              }
-            >
-              <ActivityIndicator
-                color={
-                  COLORS.primary
-                }
-              />
+            <View style={styles.historyLoader}>
+              <ActivityIndicator color={COLORS.primary} />
 
-              <Text
-                style={
-                  styles.loadingText
-                }
-              >
-                {t(
-                  "orders.loadingHistory",
-                  "Loading order history...",
-                )}
+              <Text style={styles.loadingText}>
+                {t("orders.loadingHistory", "Loading order history...")}
               </Text>
             </View>
           ) : historyError ? (
-            <View
-              style={
-                styles.errorBox
-              }
-            >
-              <Text
-                style={
-                  styles.errorText
-                }
-              >
-                {historyError}
-              </Text>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{historyError}</Text>
 
               <Pressable
-                onPress={() =>
-                  void loadHistory()
-                }
-                style={
-                  styles.retryButton
-                }
+                onPress={() => void loadHistory()}
+                style={styles.retryButton}
               >
-                <Text
-                  style={
-                    styles.retryText
-                  }
-                >
-                  {t(
-                    "common.retry",
-                    "Retry",
-                  )}
+                <Text style={styles.retryText}>
+                  {t("common.retry", "Retry")}
                 </Text>
               </Pressable>
             </View>
-          ) : historyOrders.length ===
-            0 ? (
-            <View
-              style={
-                styles.historyEmpty
-              }
-            >
-              <Text
-                style={
-                  styles.emptyTitle
-                }
-              >
-                {t(
-                  "orders.noHistory",
-                  "No orders found",
-                )}
+          ) : historyOrders.length === 0 ? (
+            <View style={styles.historyEmpty}>
+              <Text style={styles.emptyTitle}>
+                {t("orders.noHistory", "No orders found")}
               </Text>
 
-              <Text
-                style={
-                  styles.emptyText
-                }
-              >
+              <Text style={styles.emptyText}>
                 {t(
                   "orders.changeFilters",
                   "Try changing the selected filters.",
@@ -995,56 +527,25 @@ const [
             </View>
           ) : (
             <>
-              <View
-                style={
-                  styles.historyList
-                }
-              >
-                {historyOrders.map(
-                  (order) => (
-                    <SupervisorHistoryCard
-                      key={
-                        order._id
-                      }
-                      order={
-                        order
-                      }
-                      onImagePress={
-                        setPreviewImage
-                      }
-                    />
-                  ),
-                )}
+              <View style={styles.historyList}>
+                {historyOrders.map((order) => (
+                  <SupervisorHistoryCard
+                    key={order._id}
+                    order={order}
+                    supervisorUserId={user?.id ?? null}
+                    onImagePress={setPreviewImage}
+                  />
+                ))}
               </View>
 
               <Pagination
                 page={page}
-                totalPages={
-                  totalPages
-                }
+                totalPages={totalPages}
                 onPrevious={() =>
-                  setPage(
-                    (
-                      current,
-                    ) =>
-                      Math.max(
-                        1,
-                        current -
-                          1,
-                      ),
-                  )
+                  setPage((current) => Math.max(1, current - 1))
                 }
                 onNext={() =>
-                  setPage(
-                    (
-                      current,
-                    ) =>
-                      Math.min(
-                        totalPages,
-                        current +
-                          1,
-                      ),
-                  )
+                  setPage((current) => Math.min(totalPages, current + 1))
                 }
               />
             </>
@@ -1055,14 +556,8 @@ const [
       {/* IMAGE VIEWER */}
 
       <ImagePreviewModal
-        uri={
-          previewImage
-        }
-        onClose={() =>
-          setPreviewImage(
-            null,
-          )
-        }
+        uri={previewImage}
+        onClose={() => setPreviewImage(null)}
       />
     </AppScreen>
   );
@@ -1074,17 +569,12 @@ const [
  * =========================
  */
 
-function formatDisplayDate(
-  date: Date,
-) {
-  return date.toLocaleDateString(
-    [],
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    },
-  );
+function formatDisplayDate(date: Date) {
+  return date.toLocaleDateString([], {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function HistoryFilters({
@@ -1100,626 +590,299 @@ function HistoryFilters({
   onCustomFromDateChange,
   onCustomToDateChange,
 }: {
-  drivers: Driver[];
+  drivers: OrderDriverFilter[];
 
-  selectedDriverId:
-    | string
-    | null;
+  selectedDriverId: string | null;
 
-  statusFilter:
-    SupervisorOrderStatusFilter;
+  statusFilter: SupervisorOrderStatusFilter;
 
-  dateFilter:
-    DateFilter;
+  dateFilter: DateFilter;
 
-  customFromDate:
-    Date | null;
+  customFromDate: Date | null;
 
-  customToDate:
-    Date | null;
+  customToDate: Date | null;
 
-  onDriverChange: (
-    value:
-      | string
-      | null,
-  ) => void;
+  onDriverChange: (value: string | null) => void;
 
-  onStatusChange: (
-    value:
-      SupervisorOrderStatusFilter,
-  ) => void;
+  onStatusChange: (value: SupervisorOrderStatusFilter) => void;
 
-  onDateChange: (
-    value:
-      DateFilter,
-  ) => void;
+  onDateChange: (value: DateFilter) => void;
 
-  onCustomFromDateChange: (
-    date: Date,
-  ) => void;
+  onCustomFromDateChange: (date: Date) => void;
 
-  onCustomToDateChange: (
-    date: Date,
-  ) => void;
+  onCustomToDateChange: (date: Date) => void;
 }) {
-  const { t } =
-    useTranslation();
+  const { t } = useTranslation();
 
-  const [
-    showFromPicker,
-    setShowFromPicker,
-  ] =
-    useState(false);
+  const [showFromPicker, setShowFromPicker] = useState(false);
 
-  const [
-    showToPicker,
-    setShowToPicker,
-  ] =
-    useState(false);
+  const [showToPicker, setShowToPicker] = useState(false);
 
   const handleFromChange = (
     event: DateTimePickerEvent,
     selectedDate?: Date,
   ) => {
-    setShowFromPicker(
-      false,
-    );
+    setShowFromPicker(false);
 
-    if (
-      event.type ===
-        "dismissed" ||
-      !selectedDate
-    ) {
+    if (event.type === "dismissed" || !selectedDate) {
       return;
     }
 
-    onCustomFromDateChange(
-      selectedDate,
-    );
+    onCustomFromDateChange(selectedDate);
 
     /*
      * If To is earlier than
      * the new From date,
      * move To to the same date.
      */
-    if (
-      customToDate &&
-      selectedDate.getTime() >
-        customToDate.getTime()
-    ) {
-      onCustomToDateChange(
-        selectedDate,
-      );
+    if (customToDate && selectedDate.getTime() > customToDate.getTime()) {
+      onCustomToDateChange(selectedDate);
     }
   };
 
-  const handleToChange = (
-    event: DateTimePickerEvent,
-    selectedDate?: Date,
-  ) => {
-    setShowToPicker(
-      false,
-    );
+  const handleToChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowToPicker(false);
 
-    if (
-      event.type ===
-        "dismissed" ||
-      !selectedDate
-    ) {
+    if (event.type === "dismissed" || !selectedDate) {
       return;
     }
 
-    onCustomToDateChange(
-      selectedDate,
-    );
+    onCustomToDateChange(selectedDate);
   };
 
-  const openCustom =
-    () => {
-      onDateChange(
-        "custom",
-      );
+  const openCustom = () => {
+    onDateChange("custom");
 
-      /*
-       * Give the supervisor sensible
-       * defaults the first time.
-       */
-      if (
-        !customFromDate
-      ) {
-        const today =
-          new Date();
+    /*
+     * Give the supervisor sensible
+     * defaults the first time.
+     */
+    if (!customFromDate) {
+      const today = new Date();
 
-        onCustomFromDateChange(
-          today,
-        );
-      }
+      onCustomFromDateChange(today);
+    }
 
-      if (
-        !customToDate
-      ) {
-        const today =
-          new Date();
+    if (!customToDate) {
+      const today = new Date();
 
-        onCustomToDateChange(
-          today,
-        );
-      }
-    };
+      onCustomToDateChange(today);
+    }
+  };
 
   return (
-    <View
-      style={
-        styles.filtersCard
-      }
-    >
+    <View style={styles.filtersCard}>
       {/* DRIVER */}
 
-      <Text
-        style={
-          styles.filterLabel
-        }
-      >
-        {t(
-          "drivers.driver",
-          "Driver",
-        )}
-      </Text>
+      <Text style={styles.filterLabel}>{t("drivers.driver", "Driver")}</Text>
 
       <ScrollView
         horizontal
         nestedScrollEnabled
-        showsHorizontalScrollIndicator={
-          false
-        }
-        contentContainerStyle={
-          styles.filterRow
-        }
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
       >
         <FilterChip
-          label={t(
-            "drivers.allDrivers",
-            "All Drivers",
-          )}
-          active={
-            !selectedDriverId
-          }
-          onPress={() =>
-            onDriverChange(
-              null,
-            )
-          }
+          label={t("drivers.allDrivers", "All Drivers")}
+          active={!selectedDriverId}
+          onPress={() => onDriverChange(null)}
         />
 
-        {drivers.map(
-          (driver) => {
-            const id =
-              driver._id ??
-              driver.id;
+        {drivers.map((driver) => {
+          const id = driver._id ?? driver.id;
 
-            if (!id) {
-              return null;
-            }
+          if (!id) {
+            return null;
+          }
 
-            return (
-              <FilterChip
-                key={id}
-                label={
-                  driver.name
-                }
-                active={
-                  selectedDriverId ===
-                  id
-                }
-                onPress={() =>
-                  onDriverChange(
-                    id,
-                  )
-                }
-              />
-            );
-          },
-        )}
+          return (
+            <FilterChip
+              key={id}
+              label={
+                driver.isSupervisorSelf
+                  ? `${driver.name} • ${t("common.you", "You")}`
+                  : driver.name
+              }
+              active={selectedDriverId === id}
+              onPress={() => onDriverChange(id)}
+            />
+          );
+        })}
       </ScrollView>
 
       {/* STATUS */}
 
-      <Text
-        style={
-          styles.filterLabel
-        }
-      >
-        {t(
-          "orders.status",
-          "Status",
-        )}
-      </Text>
+      <Text style={styles.filterLabel}>{t("orders.status", "Status")}</Text>
 
-      <View
-        style={
-          styles.filterRowWrap
-        }
-      >
+      <View style={styles.filterRowWrap}>
         <FilterChip
-          label={t(
-            "filters.all",
-            "All",
-          )}
-          active={
-            statusFilter ===
-            "all"
-          }
-          onPress={() =>
-            onStatusChange(
-              "all",
-            )
-          }
+          label={t("filters.all", "All")}
+          active={statusFilter === "all"}
+          onPress={() => onStatusChange("all")}
         />
 
         <FilterChip
-          label={t(
-            "orders.active",
-            "Active",
-          )}
-          active={
-            statusFilter ===
-            "picked_up"
-          }
-          onPress={() =>
-            onStatusChange(
-              "picked_up",
-            )
-          }
+          label={t("orders.active", "Active")}
+          active={statusFilter === "picked_up"}
+          onPress={() => onStatusChange("picked_up")}
         />
 
         <FilterChip
-          label={t(
-            "orders.delivered",
-            "Delivered",
-          )}
-          active={
-            statusFilter ===
-            "delivered"
-          }
-          onPress={() =>
-            onStatusChange(
-              "delivered",
-            )
-          }
+          label={t("orders.delivered", "Delivered")}
+          active={statusFilter === "delivered"}
+          onPress={() => onStatusChange("delivered")}
         />
 
         <FilterChip
-          label={t(
-            "orders.cancelled",
-            "Cancelled",
-          )}
-          active={
-            statusFilter ===
-            "cancelled"
-          }
-          onPress={() =>
-            onStatusChange(
-              "cancelled",
-            )
-          }
+          label={t("orders.cancelled", "Cancelled")}
+          active={statusFilter === "cancelled"}
+          onPress={() => onStatusChange("cancelled")}
         />
       </View>
 
       {/* DATE */}
 
-      <Text
-        style={
-          styles.filterLabel
-        }
-      >
-        {t(
-          "filters.date",
-          "Date",
-        )}
-      </Text>
+      <Text style={styles.filterLabel}>{t("filters.date", "Date")}</Text>
 
-      <View
-        style={
-          styles.filterRowWrap
-        }
-      >
+      <View style={styles.filterRowWrap}>
         <FilterChip
-          label={t(
-            "filters.today",
-            "Today",
-          )}
-          active={
-            dateFilter ===
-            "today"
-          }
-          onPress={() =>
-            onDateChange(
-              "today",
-            )
-          }
+          label={t("filters.today", "Today")}
+          active={dateFilter === "today"}
+          onPress={() => onDateChange("today")}
         />
 
         <FilterChip
-          label={t(
-            "filters.sevenDays",
-            "7 Days",
-          )}
-          active={
-            dateFilter ===
-            "7days"
-          }
-          onPress={() =>
-            onDateChange(
-              "7days",
-            )
-          }
+          label={t("filters.sevenDays", "7 Days")}
+          active={dateFilter === "7days"}
+          onPress={() => onDateChange("7days")}
         />
 
         <FilterChip
-          label={t(
-            "filters.thirtyDays",
-            "30 Days",
-          )}
-          active={
-            dateFilter ===
-            "30days"
-          }
-          onPress={() =>
-            onDateChange(
-              "30days",
-            )
-          }
+          label={t("filters.thirtyDays", "30 Days")}
+          active={dateFilter === "30days"}
+          onPress={() => onDateChange("30days")}
         />
 
         <Pressable
-          onPress={
-            openCustom
-          }
-          style={({
-            pressed,
-          }) => [
+          onPress={openCustom}
+          style={({ pressed }) => [
             styles.filterChip,
 
             styles.customDateChip,
 
-            dateFilter ===
-              "custom" &&
-              styles.filterChipActive,
+            dateFilter === "custom" && styles.filterChipActive,
 
-            pressed &&
-              styles.buttonPressed,
+            pressed && styles.buttonPressed,
           ]}
         >
           <CalendarDays
             size={13}
-            color={
-              dateFilter ===
-              "custom"
-                ? COLORS.white
-                : COLORS.primary
-            }
+            color={dateFilter === "custom" ? COLORS.white : COLORS.primary}
           />
 
           <Text
             style={[
               styles.filterChipText,
 
-              dateFilter ===
-                "custom" &&
-                styles.filterChipTextActive,
+              dateFilter === "custom" && styles.filterChipTextActive,
             ]}
           >
-            {t(
-              "filters.custom",
-              "Custom",
-            )}
+            {t("filters.custom", "Custom")}
           </Text>
         </Pressable>
 
         <FilterChip
-          label={t(
-            "filters.all",
-            "All",
-          )}
-          active={
-            dateFilter ===
-            "all"
-          }
-          onPress={() =>
-            onDateChange(
-              "all",
-            )
-          }
+          label={t("filters.all", "All")}
+          active={dateFilter === "all"}
+          onPress={() => onDateChange("all")}
         />
       </View>
 
       {/* CUSTOM DATE RANGE */}
 
-      {dateFilter ===
-        "custom" && (
-        <View
-          style={
-            styles.customDateSection
-          }
-        >
-          <View
-            style={
-              styles.customDateRow
-            }
-          >
-            <View
-              style={
-                styles.customDateField
-              }
-            >
-              <Text
-                style={
-                  styles.customDateLabel
-                }
-              >
-                {t(
-                  "filters.from",
-                  "From",
-                )}
+      {dateFilter === "custom" && (
+        <View style={styles.customDateSection}>
+          <View style={styles.customDateRow}>
+            <View style={styles.customDateField}>
+              <Text style={styles.customDateLabel}>
+                {t("filters.from", "From")}
               </Text>
 
               <Pressable
-                onPress={() =>
-                  setShowFromPicker(
-                    true,
-                  )
-                }
-                style={({
-                  pressed,
-                }) => [
+                onPress={() => setShowFromPicker(true)}
+                style={({ pressed }) => [
                   styles.datePickerButton,
 
-                  pressed &&
-                    styles.buttonPressed,
+                  pressed && styles.buttonPressed,
                 ]}
               >
-                <CalendarDays
-                  size={15}
-                  color={
-                    COLORS.primary
-                  }
-                />
+                <CalendarDays size={15} color={COLORS.primary} />
 
-                <Text
-                  style={
-                    styles.datePickerText
-                  }
-                >
+                <Text style={styles.datePickerText}>
                   {customFromDate
-                    ? formatDisplayDate(
-                        customFromDate,
-                      )
-                    : t(
-                        "filters.selectDate",
-                        "Select date",
-                      )}
+                    ? formatDisplayDate(customFromDate)
+                    : t("filters.selectDate", "Select date")}
                 </Text>
               </Pressable>
             </View>
 
-            <View
-              style={
-                styles.customDateField
-              }
-            >
-              <Text
-                style={
-                  styles.customDateLabel
-                }
-              >
-                {t(
-                  "filters.to",
-                  "To",
-                )}
+            <View style={styles.customDateField}>
+              <Text style={styles.customDateLabel}>
+                {t("filters.to", "To")}
               </Text>
 
               <Pressable
-                onPress={() =>
-                  setShowToPicker(
-                    true,
-                  )
-                }
-                style={({
-                  pressed,
-                }) => [
+                onPress={() => setShowToPicker(true)}
+                style={({ pressed }) => [
                   styles.datePickerButton,
 
-                  pressed &&
-                    styles.buttonPressed,
+                  pressed && styles.buttonPressed,
                 ]}
               >
-                <CalendarDays
-                  size={15}
-                  color={
-                    COLORS.primary
-                  }
-                />
+                <CalendarDays size={15} color={COLORS.primary} />
 
-                <Text
-                  style={
-                    styles.datePickerText
-                  }
-                >
+                <Text style={styles.datePickerText}>
                   {customToDate
-                    ? formatDisplayDate(
-                        customToDate,
-                      )
-                    : t(
-                        "filters.selectDate",
-                        "Select date",
-                      )}
+                    ? formatDisplayDate(customToDate)
+                    : t("filters.selectDate", "Select date")}
                 </Text>
               </Pressable>
             </View>
           </View>
 
-          {customFromDate &&
-            customToDate && (
-              <Text
-                style={
-                  styles.customDateSummary
-                }
-              >
-                {formatDisplayDate(
-                  customFromDate,
-                )}
-                {"  →  "}
-                {formatDisplayDate(
-                  customToDate,
-                )}
-              </Text>
-            )}
+          {customFromDate && customToDate && (
+            <Text style={styles.customDateSummary}>
+              {formatDisplayDate(customFromDate)}
+              {"  →  "}
+              {formatDisplayDate(customToDate)}
+            </Text>
+          )}
         </View>
       )}
 
       {showFromPicker && (
         <DateTimePicker
-          value={
-            customFromDate ??
-            new Date()
-          }
+          value={customFromDate ?? new Date()}
           mode="date"
           display="default"
-          maximumDate={
-            customToDate ??
-            new Date()
-          }
-          onChange={
-            handleFromChange
-          }
+          maximumDate={customToDate ?? new Date()}
+          onChange={handleFromChange}
         />
       )}
 
       {showToPicker && (
         <DateTimePicker
-          value={
-            customToDate ??
-            new Date()
-          }
+          value={customToDate ?? new Date()}
           mode="date"
           display="default"
-          minimumDate={
-            customFromDate ??
-            undefined
-          }
-          maximumDate={
-            new Date()
-          }
-          onChange={
-            handleToChange
-          }
+          minimumDate={customFromDate ?? undefined}
+          maximumDate={new Date()}
+          onChange={handleToChange}
         />
       )}
     </View>
   );
 }
-
-
 
 function FilterChip({
   label,
@@ -1732,28 +895,17 @@ function FilterChip({
 }) {
   return (
     <Pressable
-      onPress={
-        onPress
-      }
-      style={({
-        pressed,
-      }) => [
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.filterChip,
 
-        active &&
-          styles.filterChipActive,
+        active && styles.filterChipActive,
 
-        pressed &&
-          styles.buttonPressed,
+        pressed && styles.buttonPressed,
       ]}
     >
       <Text
-        style={[
-          styles.filterChipText,
-
-          active &&
-            styles.filterChipTextActive,
-        ]}
+        style={[styles.filterChipText, active && styles.filterChipTextActive]}
       >
         {label}
       </Text>
@@ -1769,90 +921,50 @@ function FilterChip({
 
 function SupervisorHistoryCard({
   order,
+  supervisorUserId,
   onImagePress,
 }: {
   order: Order;
 
-  onImagePress: (
-    uri: string,
-  ) => void;
+  supervisorUserId: string | null;
+
+  onImagePress: (uri: string) => void;
 }) {
-  const { t } =
-    useTranslation();
+  const { t } = useTranslation();
 
-  const rider =
-    typeof order.rider ===
-    "string"
-      ? null
-      : order.rider;
+  const rider = typeof order.rider === "string" ? null : order.rider;
 
-  const delivered =
-    order.status ===
-    "delivered";
+  const delivered = order.status === "delivered";
 
-  const cancelled =
-    order.status ===
-    "cancelled";
+  const cancelled = order.status === "cancelled";
 
-  const active =
-    order.status ===
-    "picked_up";
+  const active = order.status === "picked_up";
 
   return (
-    <View
-      style={
-        styles.historyCard
-      }
-    >
-      <View
-        style={
-          styles.historyCardHeader
-        }
-      >
+    <View style={styles.historyCard}>
+      <View style={styles.historyCardHeader}>
         <View
           style={{
             flex: 1,
           }}
         >
-          <Text
-            style={
-              styles.historyOrderTitle
-            }
-          >
+          <Text style={styles.historyOrderTitle}>
             {order.orderId
               ? `Order #${order.orderId}`
-              : t(
-                  "orders.order",
-                  "Order",
-                )}
+              : t("orders.order", "Order")}
           </Text>
 
-          <Text
-            style={
-              styles.historyDriverName
-            }
-          >
-            {rider?.name ??
-              t(
-                "drivers.driver",
-                "Driver",
-              )}
+          <Text style={styles.historyDriverName}>
+            {rider?.name
+              ? rider._id === supervisorUserId
+                ? `${rider.name} • ${t("common.you", "You")}`
+                : rider.name
+              : t("drivers.driver", "Driver")}
           </Text>
 
           {!!rider?.iqamaId && (
-            <Text
-              style={
-                styles.historyIqama
-              }
-            >
-              {t(
-                "profile.iqama",
-                "Iqama",
-              )}
-              :{" "}
-              {
-                rider.iqamaId
-              }
+            <Text style={styles.historyIqama}>
+              {t("profile.iqama", "Iqama")}: {rider.iqamaId}
             </Text>
           )}
         </View>
@@ -1861,209 +973,108 @@ function SupervisorHistoryCard({
           style={[
             styles.historyStatus,
 
-            active &&
-              styles.historyActive,
+            active && styles.historyActive,
 
-            delivered &&
-              styles.historyDelivered,
+            delivered && styles.historyDelivered,
 
-            cancelled &&
-              styles.historyCancelled,
+            cancelled && styles.historyCancelled,
           ]}
         >
           <Text
             style={[
               styles.historyStatusText,
 
-              cancelled &&
-                styles.historyCancelledText,
+              cancelled && styles.historyCancelledText,
             ]}
           >
             {active
-              ? t(
-                  "orders.active",
-                  "Active",
-                )
+              ? t("orders.active", "Active")
               : delivered
-                ? t(
-                    "orders.delivered",
-                    "Delivered",
-                  )
-                : t(
-                    "orders.cancelled",
-                    "Cancelled",
-                  )}
+                ? t("orders.delivered", "Delivered")
+                : t("orders.cancelled", "Cancelled")}
           </Text>
         </View>
       </View>
 
-      <View
-        style={
-          styles.historyImages
-        }
-      >
+      <View style={styles.historyImages}>
         <HistoryImage
-          label={t(
-            "orders.pickup",
-            "Pickup",
-          )}
-          uri={
-            order.pickupPhoto
-              ?.url
-          }
-          onPress={
-            onImagePress
-          }
+          label={t("orders.pickup", "Pickup")}
+          uri={order.pickupPhoto?.url}
+          onPress={onImagePress}
         />
 
         {delivered && (
           <HistoryImage
-            label={t(
-              "orders.deliveryPhoto",
-              "Delivery",
-            )}
-            uri={
-              order.deliveryPhoto
-                ?.url
-            }
-            onPress={
-              onImagePress
-            }
+            label={t("orders.deliveryPhoto", "Delivery")}
+            uri={order.deliveryPhoto?.url}
+            onPress={onImagePress}
           />
         )}
       </View>
 
-      {cancelled &&
-        !!order
-          .cancellationPhotos
-          ?.length && (
-          <>
-            <Text
-              style={
-                styles.evidenceTitle
-              }
-            >
-              {t(
-                "orders.cancelPhotos",
-                "Cancellation Evidence",
-              )}
-            </Text>
+      {cancelled && !!order.cancellationPhotos?.length && (
+        <>
+          <Text style={styles.evidenceTitle}>
+            {t("orders.cancelPhotos", "Cancellation Evidence")}
+          </Text>
 
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={
-                false
-              }
-              contentContainerStyle={
-                styles.evidenceRow
-              }
-            >
-              {order.cancellationPhotos.map(
-                (
-                  photo,
-                  index,
-                ) => (
-                  <Pressable
-                    key={`${photo.url}-${index}`}
-                    onPress={() =>
-                      onImagePress(
-                        photo.url,
-                      )
-                    }
-                  >
-                    <Image
-                      source={{
-                        uri:
-                          photo.url,
-                      }}
-                      style={
-                        styles.evidenceImage
-                      }
-                      resizeMode="cover"
-                    />
-                  </Pressable>
-                ),
-              )}
-            </ScrollView>
-          </>
-        )}
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.evidenceRow}
+          >
+            {order.cancellationPhotos.map((photo, index) => (
+              <Pressable
+                key={`${photo.url}-${index}`}
+                onPress={() => onImagePress(photo.url)}
+              >
+                <Image
+                  source={{
+                    uri: photo.url,
+                  }}
+                  style={styles.evidenceImage}
+                  resizeMode="cover"
+                />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      )}
 
-      <View
-        style={
-          styles.historyDetails
-        }
-      >
+      <View style={styles.historyDetails}>
         <HistoryDetail
-          label={t(
-            "orders.pickupTime",
-            "Pickup",
-          )}
-          value={formatOrderDateTime(
-            order.pickupTime,
-          )}
+          label={t("orders.pickupTime", "Pickup")}
+          value={formatOrderDateTime(order.pickupTime)}
         />
 
-        {delivered &&
-          order.deliveryTime && (
-            <HistoryDetail
-              label={t(
-                "orders.deliveryTime",
-                "Delivery",
-              )}
-              value={formatOrderDateTime(
-                order.deliveryTime,
-              )}
-            />
-          )}
+        {delivered && order.deliveryTime && (
+          <HistoryDetail
+            label={t("orders.deliveryTime", "Delivery")}
+            value={formatOrderDateTime(order.deliveryTime)}
+          />
+        )}
 
-        {cancelled &&
-          order.cancelledAt && (
-            <HistoryDetail
-              label={t(
-                "orders.cancelledAt",
-                "Cancelled",
-              )}
-              value={formatOrderDateTime(
-                order.cancelledAt,
-              )}
-            />
-          )}
+        {cancelled && order.cancelledAt && (
+          <HistoryDetail
+            label={t("orders.cancelledAt", "Cancelled")}
+            value={formatOrderDateTime(order.cancelledAt)}
+          />
+        )}
 
-        {cancelled &&
-          !!order.cancellationReason && (
-            <HistoryDetail
-              label={t(
-                "orders.cancelReason",
-                "Reason",
-              )}
-              value={formatCancellationReason(
-                order.cancellationReason,
-              )}
-            />
-          )}
+        {cancelled && !!order.cancellationReason && (
+          <HistoryDetail
+            label={t("orders.cancelReason", "Reason")}
+            value={formatCancellationReason(order.cancellationReason)}
+          />
+        )}
 
-        {cancelled &&
-          !!order.cancellationNotes && (
-            <Text
-              style={
-                styles.historyNotes
-              }
-            >
-              {
-                order.cancellationNotes
-              }
-            </Text>
-          )}
+        {cancelled && !!order.cancellationNotes && (
+          <Text style={styles.historyNotes}>{order.cancellationNotes}</Text>
+        )}
 
         {!!order.notes && (
-          <Text
-            style={
-              styles.historyNotes
-            }
-          >
-            {order.notes}
-          </Text>
+          <Text style={styles.historyNotes}>{order.notes}</Text>
         )}
       </View>
     </View>
@@ -2077,105 +1088,43 @@ function HistoryImage({
 }: {
   label: string;
 
-  uri?:
-    | string
-    | null;
+  uri?: string | null;
 
-  onPress: (
-    uri: string,
-  ) => void;
+  onPress: (uri: string) => void;
 }) {
   return (
-    <View
-      style={
-        styles.historyImageBox
-      }
-    >
-      <Text
-        style={
-          styles.historyImageLabel
-        }
-      >
-        {label}
-      </Text>
+    <View style={styles.historyImageBox}>
+      <Text style={styles.historyImageLabel}>{label}</Text>
 
       {uri ? (
-        <Pressable
-          onPress={() =>
-            onPress(uri)
-          }
-        >
+        <Pressable onPress={() => onPress(uri)}>
           <Image
             source={{
               uri,
             }}
-            style={
-              styles.historyImage
-            }
+            style={styles.historyImage}
             resizeMode="cover"
           />
 
-          <View
-            style={
-              styles.tapImageHint
-            }
-          >
-            <Text
-              style={
-                styles.tapImageHintText
-              }
-            >
-              View
-            </Text>
+          <View style={styles.tapImageHint}>
+            <Text style={styles.tapImageHintText}>View</Text>
           </View>
         </Pressable>
       ) : (
-        <View
-          style={
-            styles.historyImageEmpty
-          }
-        >
-          <Text
-            style={
-              styles.historyImageEmptyText
-            }
-          >
-            -
-          </Text>
+        <View style={styles.historyImageEmpty}>
+          <Text style={styles.historyImageEmptyText}>-</Text>
         </View>
       )}
     </View>
   );
 }
 
-function HistoryDetail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function HistoryDetail({ label, value }: { label: string; value: string }) {
   return (
-    <View
-      style={
-        styles.historyDetailRow
-      }
-    >
-      <Text
-        style={
-          styles.historyDetailLabel
-        }
-      >
-        {label}
-      </Text>
+    <View style={styles.historyDetailRow}>
+      <Text style={styles.historyDetailLabel}>{label}</Text>
 
-      <Text
-        style={
-          styles.historyDetailValue
-        }
-      >
-        {value}
-      </Text>
+      <Text style={styles.historyDetailValue}>{value}</Text>
     </View>
   );
 }
@@ -2190,9 +1139,7 @@ function ImagePreviewModal({
   uri,
   onClose,
 }: {
-  uri:
-    | string
-    | null;
+  uri: string | null;
 
   onClose: () => void;
 }) {
@@ -2201,43 +1148,14 @@ function ImagePreviewModal({
       visible={!!uri}
       transparent
       animationType="fade"
-      onRequestClose={
-        onClose
-      }
+      onRequestClose={onClose}
     >
-      <View
-        style={
-          styles.imageModalOverlay
-        }
-      >
-        <Pressable
-          style={
-            styles.imageModalBackground
-          }
-          onPress={
-            onClose
-          }
-        />
+      <View style={styles.imageModalOverlay}>
+        <Pressable style={styles.imageModalBackground} onPress={onClose} />
 
-        <View
-          style={
-            styles.imageModalContent
-          }
-        >
-          <Pressable
-            onPress={
-              onClose
-            }
-            style={
-              styles.imageModalClose
-            }
-          >
-            <X
-              size={24}
-              color={
-                COLORS.white
-              }
-            />
+        <View style={styles.imageModalContent}>
+          <Pressable onPress={onClose} style={styles.imageModalClose}>
+            <X size={24} color={COLORS.white} />
           </Pressable>
 
           {uri && (
@@ -2245,9 +1163,7 @@ function ImagePreviewModal({
               source={{
                 uri,
               }}
-              style={
-                styles.fullImage
-              }
+              style={styles.fullImage}
               resizeMode="contain"
             />
           )}
@@ -2273,88 +1189,42 @@ function Pagination({
 
   totalPages: number;
 
-  onPrevious:
-    () => void;
+  onPrevious: () => void;
 
-  onNext:
-    () => void;
+  onNext: () => void;
 }) {
-  const { t } =
-    useTranslation();
+  const { t } = useTranslation();
 
-  if (
-    totalPages <= 1
-  ) {
+  if (totalPages <= 1) {
     return null;
   }
 
   return (
-    <View
-      style={
-        styles.pagination
-      }
-    >
+    <View style={styles.pagination}>
       <Pressable
-        disabled={
-          page <= 1
-        }
-        onPress={
-          onPrevious
-        }
-        style={[
-          styles.pageButton,
-
-          page <= 1 &&
-            styles.pageButtonDisabled,
-        ]}
+        disabled={page <= 1}
+        onPress={onPrevious}
+        style={[styles.pageButton, page <= 1 && styles.pageButtonDisabled]}
       >
-        <Text
-          style={
-            styles.pageButtonText
-          }
-        >
-          {t(
-            "common.previous",
-            "Previous",
-          )}
+        <Text style={styles.pageButtonText}>
+          {t("common.previous", "Previous")}
         </Text>
       </Pressable>
 
-      <Text
-        style={
-          styles.pageNumber
-        }
-      >
-        {page} /{" "}
-        {totalPages}
+      <Text style={styles.pageNumber}>
+        {page} / {totalPages}
       </Text>
 
       <Pressable
-        disabled={
-          page >=
-          totalPages
-        }
-        onPress={
-          onNext
-        }
+        disabled={page >= totalPages}
+        onPress={onNext}
         style={[
           styles.pageButton,
 
-          page >=
-            totalPages &&
-            styles.pageButtonDisabled,
+          page >= totalPages && styles.pageButtonDisabled,
         ]}
       >
-        <Text
-          style={
-            styles.pageButtonText
-          }
-        >
-          {t(
-            "common.next",
-            "Next",
-          )}
-        </Text>
+        <Text style={styles.pageButtonText}>{t("common.next", "Next")}</Text>
       </Pressable>
     </View>
   );
@@ -2366,168 +1236,89 @@ function Pagination({
  * =========================
  */
 
-function getDateRange(
-  filter: DateFilter,
-) {
-  if (
-    filter === "all" ||
-    filter === "custom"
-  ) {
+function getDateRange(filter: DateFilter) {
+  if (filter === "all" || filter === "custom") {
     return {
       from: undefined,
       to: undefined,
     };
   }
 
-  const now =
-    new Date();
+  const now = new Date();
 
-  const start =
-    new Date(now);
+  const start = new Date(now);
 
-  if (
-    filter === "7days"
-  ) {
-    start.setDate(
-      now.getDate() - 6,
-    );
+  if (filter === "7days") {
+    start.setDate(now.getDate() - 6);
   }
 
-  if (
-    filter === "30days"
-  ) {
-    start.setDate(
-      now.getDate() - 29,
-    );
+  if (filter === "30days") {
+    start.setDate(now.getDate() - 29);
   }
 
   return {
-    from:
-      formatDateForApi(
-        start,
-      ),
+    from: formatDateForApi(start),
 
-    to:
-      formatDateForApi(
-        now,
-      ),
+    to: formatDateForApi(now),
   };
 }
 
-function formatDateForApi(
-  date: Date,
-) {
-  const year =
-    date.getFullYear();
+function formatDateForApi(date: Date) {
+  const year = date.getFullYear();
 
-  const month =
-    String(
-      date.getMonth() +
-        1,
-    ).padStart(
-      2,
-      "0",
-    );
+  const month = String(date.getMonth() + 1).padStart(2, "0");
 
-  const day =
-    String(
-      date.getDate(),
-    ).padStart(
-      2,
-      "0",
-    );
+  const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
-function formatOrderTime(
-  value?:
-    | string
-    | Date
-    | null,
-) {
+function formatOrderTime(value?: string | Date | null) {
   if (!value) {
     return "-";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "-";
   }
 
-  return date.toLocaleTimeString(
-    [],
-    {
-      hour:
-        "2-digit",
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
 
-      minute:
-        "2-digit",
-    },
-  );
+    minute: "2-digit",
+  });
 }
 
-function formatOrderDateTime(
-  value?:
-    | string
-    | Date
-    | null,
-) {
+function formatOrderDateTime(value?: string | Date | null) {
   if (!value) {
     return "-";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "-";
   }
 
-  return date.toLocaleString(
-    [],
-    {
-      year:
-        "numeric",
+  return date.toLocaleString([], {
+    year: "numeric",
 
-      month:
-        "short",
+    month: "short",
 
-      day:
-        "2-digit",
+    day: "2-digit",
 
-      hour:
-        "2-digit",
+    hour: "2-digit",
 
-      minute:
-        "2-digit",
-    },
-  );
+    minute: "2-digit",
+  });
 }
 
-function formatCancellationReason(
-  value: string,
-) {
+function formatCancellationReason(value: string) {
   return value
-    .replaceAll(
-      "_",
-      " ",
-    )
-    .replace(
-      /\b\w/g,
-      (character) =>
-        character.toUpperCase(),
-    );
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 /*
@@ -2536,1091 +1327,960 @@ function formatCancellationReason(
  * =========================
  */
 
-const styles =
-  StyleSheet.create({
-    screen: {
-      flex: 1,
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
 
-      backgroundColor:
-        COLORS.light,
-    },
+    backgroundColor: COLORS.light,
+  },
 
-    content: {
-      paddingHorizontal: 12,
+  content: {
+    paddingHorizontal: 12,
 
-      paddingTop: 8,
+    paddingTop: 8,
 
-      paddingBottom: 30,
-    },
+    paddingBottom: 30,
+  },
 
-    backButton: {
-      alignSelf:
-        "flex-start",
+  backButton: {
+    alignSelf: "flex-start",
 
-      paddingVertical: 3,
+    paddingVertical: 3,
 
-      marginBottom: 6,
-    },
+    marginBottom: 6,
+  },
 
-    backText: {
-      fontSize: 12,
+  backText: {
+    fontSize: 12,
 
-      fontWeight: "700",
+    fontWeight: "700",
 
-      color:
-        COLORS.secondary,
-    },
+    color: COLORS.secondary,
+  },
 
-    heading: {
-      flexDirection: "row",
+  heading: {
+    flexDirection: "row",
 
-      alignItems: "center",
+    alignItems: "center",
 
-      marginBottom: 10,
-    },
+    marginBottom: 10,
+  },
 
-    headingLeft: {
-      flex: 1,
-    },
+  headingLeft: {
+    flex: 1,
+  },
 
-    title: {
-      fontSize: 21,
+  title: {
+    fontSize: 21,
 
-      fontWeight: "900",
+    fontWeight: "900",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    subtitle: {
-      marginTop: 2,
+  subtitle: {
+    marginTop: 2,
 
-      fontSize: 11,
+    fontSize: 11,
 
-      lineHeight: 15,
+    lineHeight: 15,
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    countBadge: {
-      minWidth: 46,
+  countBadge: {
+    minWidth: 46,
 
-      height: 38,
+    height: 38,
 
-      marginLeft: 10,
+    marginLeft: 10,
 
-      paddingHorizontal: 8,
+    paddingHorizontal: 8,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      borderRadius: 9,
+    borderRadius: 9,
 
-      backgroundColor:
-        COLORS.primary,
-    },
+    backgroundColor: COLORS.primary,
+  },
 
-    countValue: {
-      fontSize: 13,
+  countValue: {
+    fontSize: 13,
 
-      fontWeight: "900",
+    fontWeight: "900",
 
-      color:
-        COLORS.white,
-    },
+    color: COLORS.white,
+  },
 
-    countLabel: {
-      marginTop: -1,
+  countLabel: {
+    marginTop: -1,
 
-      fontSize: 7,
+    fontSize: 7,
 
-      fontWeight: "700",
+    fontWeight: "700",
 
-      color: "#D9E6E7",
-    },
+    color: "#D9E6E7",
+  },
 
-    loading: {
-      minHeight: 120,
+  loading: {
+    minHeight: 120,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
-    },
+    justifyContent: "center",
+  },
 
-    loadingText: {
-      marginTop: 6,
+  loadingText: {
+    marginTop: 6,
 
-      fontSize: 10,
+    fontSize: 10,
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    errorBox: {
-      padding: 10,
+  errorBox: {
+    padding: 10,
 
-      borderRadius: 9,
+    borderRadius: 9,
 
-      backgroundColor:
-        COLORS.errorBackground,
+    backgroundColor: COLORS.errorBackground,
 
-      marginBottom: 8,
-    },
+    marginBottom: 8,
+  },
 
-    errorText: {
-      fontSize: 10,
+  errorText: {
+    fontSize: 10,
 
-      lineHeight: 14,
+    lineHeight: 14,
 
-      color:
-        COLORS.error,
-    },
+    color: COLORS.error,
+  },
 
-    retryButton: {
-      height: 32,
+  retryButton: {
+    height: 32,
 
-      marginTop: 8,
+    marginTop: 8,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      borderRadius: 8,
+    borderRadius: 8,
 
-      backgroundColor:
-        COLORS.primary,
-    },
+    backgroundColor: COLORS.primary,
+  },
 
-    retryText: {
-      fontSize: 10,
+  retryText: {
+    fontSize: 10,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.white,
-    },
+    color: COLORS.white,
+  },
 
-    emptyCard: {
-      minHeight: 140,
+  emptyCard: {
+    minHeight: 140,
 
-      paddingHorizontal: 18,
+    paddingHorizontal: 18,
 
-      paddingVertical: 18,
+    paddingVertical: 18,
 
-      borderRadius: 12,
+    borderRadius: 12,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
+    borderColor: COLORS.border,
 
-      backgroundColor:
-        COLORS.white,
+    backgroundColor: COLORS.white,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
-    },
+    justifyContent: "center",
+  },
 
-    iconCircle: {
-      width: 40,
+  iconCircle: {
+    width: 40,
 
-      height: 40,
+    height: 40,
 
-      borderRadius: 20,
+    borderRadius: 20,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      backgroundColor:
-        COLORS.light,
+    backgroundColor: COLORS.light,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
+    borderColor: COLORS.border,
 
-      marginBottom: 8,
-    },
+    marginBottom: 8,
+  },
 
-    iconText: {
-      fontSize: 14,
+  iconText: {
+    fontSize: 14,
 
-      fontWeight: "900",
+    fontWeight: "900",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    emptyTitle: {
-      fontSize: 13,
+  emptyTitle: {
+    fontSize: 13,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.primary,
+    color: COLORS.primary,
 
-      textAlign:
-        "center",
-    },
+    textAlign: "center",
+  },
 
-    emptyText: {
-      maxWidth: 280,
+  emptyText: {
+    maxWidth: 280,
 
-      marginTop: 4,
+    marginTop: 4,
 
-      fontSize: 10,
+    fontSize: 10,
 
-      lineHeight: 15,
+    lineHeight: 15,
 
-      color:
-        COLORS.muted,
+    color: COLORS.muted,
 
-      textAlign:
-        "center",
-    },
+    textAlign: "center",
+  },
 
-    list: {
-      gap: 6,
-    },
+  list: {
+    gap: 6,
+  },
 
-    orderCard: {
-      minHeight: 72,
+  orderCard: {
+    minHeight: 72,
 
-      flexDirection: "row",
+    flexDirection: "row",
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      padding: 8,
+    padding: 8,
 
-      borderRadius: 10,
+    borderRadius: 10,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
+    borderColor: COLORS.border,
 
-      backgroundColor:
-        COLORS.white,
-    },
+    backgroundColor: COLORS.white,
+  },
 
-    orderImage: {
-      width: 54,
+  orderImage: {
+    width: 54,
 
-      height: 54,
+    height: 54,
 
-      borderRadius: 8,
+    borderRadius: 8,
 
-      backgroundColor:
-        COLORS.light,
-    },
+    backgroundColor: COLORS.light,
+  },
 
-    orderImagePlaceholder: {
-      width: 54,
+  orderImagePlaceholder: {
+    width: 54,
 
-      height: 54,
+    height: 54,
 
-      borderRadius: 8,
+    borderRadius: 8,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      backgroundColor:
-        COLORS.light,
+    backgroundColor: COLORS.light,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
-    },
+    borderColor: COLORS.border,
+  },
 
-    orderImageText: {
-      fontSize: 15,
+  orderImageText: {
+    fontSize: 15,
 
-      fontWeight: "900",
+    fontWeight: "900",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    orderInfo: {
-      flex: 1,
+  orderInfo: {
+    flex: 1,
 
-      minWidth: 0,
+    minWidth: 0,
 
-      marginLeft: 9,
-    },
+    marginLeft: 9,
+  },
 
-    orderTopRow: {
-      flexDirection: "row",
+  orderTopRow: {
+    flexDirection: "row",
 
-      alignItems:
-        "center",
-    },
+    alignItems: "center",
+  },
 
-    driverName: {
-      flex: 1,
+  driverName: {
+    flex: 1,
 
-      fontSize: 12,
+    fontSize: 12,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.black,
-    },
+    color: COLORS.black,
+  },
 
-    orderIdText: {
-      marginTop: 2,
+  orderIdText: {
+    marginTop: 2,
 
-      fontSize: 9,
+    fontSize: 9,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    activeBadge: {
-      marginLeft: 6,
+  activeBadge: {
+    marginLeft: 6,
 
-      paddingHorizontal: 6,
+    paddingHorizontal: 6,
 
-      paddingVertical: 3,
+    paddingVertical: 3,
 
-      flexDirection: "row",
+    flexDirection: "row",
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      borderRadius: 999,
+    borderRadius: 999,
 
-      backgroundColor:
-        COLORS.successBackground,
-    },
+    backgroundColor: COLORS.successBackground,
+  },
 
-    activeDot: {
-      width: 5,
+  activeDot: {
+    width: 5,
 
-      height: 5,
+    height: 5,
 
-      marginRight: 4,
+    marginRight: 4,
 
-      borderRadius: 3,
+    borderRadius: 3,
 
-      backgroundColor:
-        COLORS.success,
-    },
+    backgroundColor: COLORS.success,
+  },
 
-    activeText: {
-      fontSize: 7,
+  activeText: {
+    fontSize: 7,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.success,
-    },
+    color: COLORS.success,
+  },
 
-    driverSub: {
-      marginTop: 2,
+  driverSub: {
+    marginTop: 2,
 
-      fontSize: 9,
+    fontSize: 9,
 
-      color:
-        COLORS.secondary,
-    },
+    color: COLORS.secondary,
+  },
 
-    pickupTime: {
-      marginTop: 2,
+  pickupTime: {
+    marginTop: 2,
 
-      fontSize: 8,
+    fontSize: 8,
 
-      fontWeight: "600",
+    fontWeight: "600",
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    notes: {
-      marginTop: 3,
+  notes: {
+    marginTop: 3,
 
-      fontSize: 8,
+    fontSize: 8,
 
-      lineHeight: 11,
+    lineHeight: 11,
 
-      color:
-        COLORS.black,
-    },
+    color: COLORS.black,
+  },
 
-    chevron: {
-      marginLeft: 5,
+  chevron: {
+    marginLeft: 5,
 
-      fontSize: 20,
+    fontSize: 20,
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    /*
-     * HISTORY
-     */
+  /*
+   * HISTORY
+   */
 
-    historySection: {
-      marginTop: 22,
-    },
+  historySection: {
+    marginTop: 22,
+  },
 
-    historyHeading: {
-      flexDirection: "row",
+  historyHeading: {
+    flexDirection: "row",
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      marginBottom: 8,
-    },
+    marginBottom: 8,
+  },
 
-    historyTitle: {
-      fontSize: 18,
+  historyTitle: {
+    fontSize: 18,
 
-      fontWeight: "900",
+    fontWeight: "900",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    historySubtitle: {
-      marginTop: 2,
+  historySubtitle: {
+    marginTop: 2,
 
-      fontSize: 9,
+    fontSize: 9,
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    filtersCard: {
-      padding: 10,
+  filtersCard: {
+    padding: 10,
 
-      marginBottom: 10,
+    marginBottom: 10,
 
-      borderRadius: 11,
+    borderRadius: 11,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
+    borderColor: COLORS.border,
 
-      backgroundColor:
-        COLORS.white,
-    },
+    backgroundColor: COLORS.white,
+  },
 
-    filterLabel: {
-      marginBottom: 5,
+  filterLabel: {
+    marginBottom: 5,
 
-      marginTop: 7,
+    marginTop: 7,
 
-      fontSize: 9,
+    fontSize: 9,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    filterRow: {
-      gap: 5,
+  filterRow: {
+    gap: 5,
 
-      paddingRight: 10,
-    },
+    paddingRight: 10,
+  },
 
-    filterRowWrap: {
-      flexDirection: "row",
+  filterRowWrap: {
+    flexDirection: "row",
 
-      flexWrap: "wrap",
+    flexWrap: "wrap",
 
-      gap: 5,
-    },
+    gap: 5,
+  },
 
-    filterChip: {
-      minHeight: 30,
+  filterChip: {
+    minHeight: 30,
 
-      paddingHorizontal: 10,
+    paddingHorizontal: 10,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      borderRadius: 999,
+    borderRadius: 999,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
+    borderColor: COLORS.border,
 
-      backgroundColor:
-        COLORS.light,
-    },
+    backgroundColor: COLORS.light,
+  },
 
-    filterChipActive: {
-      borderColor:
-        COLORS.primary,
+  filterChipActive: {
+    borderColor: COLORS.primary,
 
-      backgroundColor:
-        COLORS.primary,
-    },
+    backgroundColor: COLORS.primary,
+  },
 
-    filterChipText: {
-      fontSize: 8,
+  filterChipText: {
+    fontSize: 8,
 
-      fontWeight: "700",
+    fontWeight: "700",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    filterChipTextActive: {
-      color:
-        COLORS.white,
-    },
+  filterChipTextActive: {
+    color: COLORS.white,
+  },
 
-    historyLoader: {
-      minHeight: 100,
+  historyLoader: {
+    minHeight: 100,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
-    },
+    justifyContent: "center",
+  },
 
-    historyEmpty: {
-      padding: 20,
+  historyEmpty: {
+    padding: 20,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      borderRadius: 10,
+    borderRadius: 10,
 
-      backgroundColor:
-        COLORS.white,
+    backgroundColor: COLORS.white,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
-    },
+    borderColor: COLORS.border,
+  },
 
-    historyList: {
-      gap: 9,
-    },
+  historyList: {
+    gap: 9,
+  },
 
-    historyCard: {
-      padding: 10,
+  historyCard: {
+    padding: 10,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
+    borderColor: COLORS.border,
 
-      borderRadius: 12,
+    borderRadius: 12,
 
-      backgroundColor:
-        COLORS.white,
-    },
+    backgroundColor: COLORS.white,
+  },
 
-    historyCardHeader: {
-      flexDirection: "row",
+  historyCardHeader: {
+    flexDirection: "row",
 
-      alignItems:
-        "flex-start",
+    alignItems: "flex-start",
 
-      marginBottom: 8,
-    },
+    marginBottom: 8,
+  },
 
-    historyOrderTitle: {
-      fontSize: 13,
+  historyOrderTitle: {
+    fontSize: 13,
 
-      fontWeight: "900",
+    fontWeight: "900",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    historyDriverName: {
-      marginTop: 2,
+  historyDriverName: {
+    marginTop: 2,
 
-      fontSize: 11,
+    fontSize: 11,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.black,
-    },
+    color: COLORS.black,
+  },
 
-    historyIqama: {
-      marginTop: 1,
+  historyIqama: {
+    marginTop: 1,
 
-      fontSize: 8,
+    fontSize: 8,
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    historyStatus: {
-      paddingHorizontal: 7,
+  historyStatus: {
+    paddingHorizontal: 7,
 
-      paddingVertical: 4,
+    paddingVertical: 4,
 
-      borderRadius: 999,
-    },
+    borderRadius: 999,
+  },
 
-    historyActive: {
-      backgroundColor:
-        COLORS.successBackground,
-    },
+  historyActive: {
+    backgroundColor: COLORS.successBackground,
+  },
 
-    historyDelivered: {
-      backgroundColor:
-        COLORS.successBackground,
-    },
+  historyDelivered: {
+    backgroundColor: COLORS.successBackground,
+  },
 
-    historyCancelled: {
-      backgroundColor:
-        COLORS.errorBackground,
-    },
+  historyCancelled: {
+    backgroundColor: COLORS.errorBackground,
+  },
 
-    historyStatusText: {
-      fontSize: 7,
+  historyStatusText: {
+    fontSize: 7,
 
-      fontWeight: "900",
+    fontWeight: "900",
 
-      color:
-        COLORS.success,
-    },
+    color: COLORS.success,
+  },
 
-    historyCancelledText: {
-      color:
-        COLORS.error,
-    },
+  historyCancelledText: {
+    color: COLORS.error,
+  },
 
-    historyImages: {
-      flexDirection: "row",
+  historyImages: {
+    flexDirection: "row",
 
-      gap: 7,
-    },
+    gap: 7,
+  },
 
-    historyImageBox: {
-      flex: 1,
-    },
+  historyImageBox: {
+    flex: 1,
+  },
 
-    historyImageLabel: {
-      marginBottom: 4,
+  historyImageLabel: {
+    marginBottom: 4,
 
-      fontSize: 8,
+    fontSize: 8,
 
-      fontWeight: "700",
+    fontWeight: "700",
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    historyImage: {
-      width: "100%",
+  historyImage: {
+    width: "100%",
 
-      height: 125,
+    height: 125,
 
-      borderRadius: 9,
+    borderRadius: 9,
 
-      backgroundColor:
-        COLORS.light,
-    },
+    backgroundColor: COLORS.light,
+  },
 
-    historyImageEmpty: {
-      height: 125,
+  historyImageEmpty: {
+    height: 125,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      borderRadius: 9,
+    borderRadius: 9,
 
-      backgroundColor:
-        COLORS.light,
+    backgroundColor: COLORS.light,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
-    },
+    borderColor: COLORS.border,
+  },
 
-    historyImageEmptyText: {
-      fontSize: 15,
+  historyImageEmptyText: {
+    fontSize: 15,
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    tapImageHint: {
-      position:
-        "absolute",
+  tapImageHint: {
+    position: "absolute",
 
-      right: 5,
+    right: 5,
 
-      bottom: 5,
+    bottom: 5,
 
-      paddingHorizontal: 7,
+    paddingHorizontal: 7,
 
-      paddingVertical: 3,
+    paddingVertical: 3,
 
-      borderRadius: 999,
+    borderRadius: 999,
 
-      backgroundColor:
-        "rgba(0,0,0,0.55)",
-    },
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
 
-    tapImageHintText: {
-      fontSize: 7,
+  tapImageHintText: {
+    fontSize: 7,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.white,
-    },
+    color: COLORS.white,
+  },
 
-    evidenceTitle: {
-      marginTop: 10,
+  evidenceTitle: {
+    marginTop: 10,
 
-      marginBottom: 5,
+    marginBottom: 5,
 
-      fontSize: 9,
+    fontSize: 9,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    evidenceRow: {
-      gap: 6,
+  evidenceRow: {
+    gap: 6,
 
-      paddingRight: 8,
-    },
+    paddingRight: 8,
+  },
 
-    evidenceImage: {
-      width: 80,
+  evidenceImage: {
+    width: 80,
 
-      height: 80,
+    height: 80,
 
-      borderRadius: 8,
+    borderRadius: 8,
 
-      backgroundColor:
-        COLORS.light,
-    },
+    backgroundColor: COLORS.light,
+  },
 
-    historyDetails: {
-      marginTop: 9,
+  historyDetails: {
+    marginTop: 9,
 
-      paddingTop: 8,
+    paddingTop: 8,
 
-      borderTopWidth:
-        StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
 
-      borderTopColor:
-        COLORS.border,
-    },
+    borderTopColor: COLORS.border,
+  },
 
-    historyDetailRow: {
-      flexDirection: "row",
+  historyDetailRow: {
+    flexDirection: "row",
 
-      justifyContent:
-        "space-between",
+    justifyContent: "space-between",
 
-      gap: 8,
+    gap: 8,
 
-      marginBottom: 4,
-    },
+    marginBottom: 4,
+  },
 
-    historyDetailLabel: {
-      fontSize: 8,
+  historyDetailLabel: {
+    fontSize: 8,
 
-      color:
-        COLORS.muted,
-    },
+    color: COLORS.muted,
+  },
 
-    historyDetailValue: {
-      flex: 1,
+  historyDetailValue: {
+    flex: 1,
 
-      textAlign:
-        "right",
+    textAlign: "right",
 
-      fontSize: 8,
+    fontSize: 8,
 
-      fontWeight: "700",
+    fontWeight: "700",
 
-      color:
-        COLORS.black,
-    },
+    color: COLORS.black,
+  },
 
-    historyNotes: {
-      marginTop: 5,
+  historyNotes: {
+    marginTop: 5,
 
-      padding: 7,
+    padding: 7,
 
-      borderRadius: 7,
+    borderRadius: 7,
 
-      fontSize: 9,
+    fontSize: 9,
 
-      lineHeight: 13,
+    lineHeight: 13,
 
-      color:
-        COLORS.black,
+    color: COLORS.black,
 
-      backgroundColor:
-        COLORS.light,
-    },
+    backgroundColor: COLORS.light,
+  },
 
-    /*
-     * PAGINATION
-     */
+  /*
+   * PAGINATION
+   */
 
-    pagination: {
-      flexDirection: "row",
+  pagination: {
+    flexDirection: "row",
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "space-between",
+    justifyContent: "space-between",
 
-      marginTop: 12,
-    },
+    marginTop: 12,
+  },
 
-    pageButton: {
-      minWidth: 85,
+  pageButton: {
+    minWidth: 85,
 
-      height: 34,
+    height: 34,
 
-      paddingHorizontal: 10,
+    paddingHorizontal: 10,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      borderRadius: 8,
+    borderRadius: 8,
 
-      borderWidth: 1,
+    borderWidth: 1,
 
-      borderColor:
-        COLORS.border,
+    borderColor: COLORS.border,
 
-      backgroundColor:
-        COLORS.white,
-    },
+    backgroundColor: COLORS.white,
+  },
 
-    pageButtonDisabled: {
-      opacity: 0.35,
-    },
+  pageButtonDisabled: {
+    opacity: 0.35,
+  },
 
-    pageButtonText: {
-      fontSize: 9,
+  pageButtonText: {
+    fontSize: 9,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    pageNumber: {
-      fontSize: 10,
+  pageNumber: {
+    fontSize: 10,
 
-      fontWeight: "800",
+    fontWeight: "800",
 
-      color:
-        COLORS.primary,
-    },
+    color: COLORS.primary,
+  },
 
-    /*
-     * IMAGE MODAL
-     */
+  /*
+   * IMAGE MODAL
+   */
 
-    imageModalOverlay: {
-      flex: 1,
+  imageModalOverlay: {
+    flex: 1,
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      backgroundColor:
-        "rgba(0,0,0,0.94)",
-    },
+    backgroundColor: "rgba(0,0,0,0.94)",
+  },
 
-    imageModalBackground: {
-      ...StyleSheet.absoluteFill,
-    },
+  imageModalBackground: {
+    ...StyleSheet.absoluteFill,
+  },
 
-    imageModalContent: {
-      flex: 1,
+  imageModalContent: {
+    flex: 1,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      padding: 16,
-    },
+    padding: 16,
+  },
 
-    imageModalClose: {
-      position:
-        "absolute",
+  imageModalClose: {
+    position: "absolute",
 
-      top: 48,
+    top: 48,
 
-      right: 18,
+    right: 18,
 
-      zIndex: 10,
+    zIndex: 10,
 
-      width: 42,
+    width: 42,
 
-      height: 42,
+    height: 42,
 
-      borderRadius: 21,
+    borderRadius: 21,
 
-      alignItems:
-        "center",
+    alignItems: "center",
 
-      justifyContent:
-        "center",
+    justifyContent: "center",
 
-      backgroundColor:
-        "rgba(255,255,255,0.18)",
-    },
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
 
-    fullImage: {
-      width: "100%",
+  fullImage: {
+    width: "100%",
 
-      height: "82%",
-    },
+    height: "82%",
+  },
 
-    buttonPressed: {
-      opacity: 0.7,
-    },
+  buttonPressed: {
+    opacity: 0.7,
+  },
 
-    customDateChip: {
-  flexDirection:
-    "row",
+  customDateChip: {
+    flexDirection: "row",
 
-  gap: 5,
-},
+    gap: 5,
+  },
 
-customDateSection: {
-  marginTop: 10,
+  customDateSection: {
+    marginTop: 10,
 
-  paddingTop: 10,
+    paddingTop: 10,
 
-  borderTopWidth:
-    StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
 
-  borderTopColor:
-    COLORS.border,
-},
+    borderTopColor: COLORS.border,
+  },
 
-customDateRow: {
-  flexDirection:
-    "row",
+  customDateRow: {
+    flexDirection: "row",
 
-  gap: 7,
-},
+    gap: 7,
+  },
 
-customDateField: {
-  flex: 1,
-},
+  customDateField: {
+    flex: 1,
+  },
 
-customDateLabel: {
-  marginBottom: 4,
+  customDateLabel: {
+    marginBottom: 4,
 
-  fontSize: 8,
+    fontSize: 8,
 
-  fontWeight: "800",
+    fontWeight: "800",
 
-  color:
-    COLORS.muted,
-},
+    color: COLORS.muted,
+  },
 
-datePickerButton: {
-  height: 38,
+  datePickerButton: {
+    height: 38,
 
-  flexDirection:
-    "row",
+    flexDirection: "row",
 
-  alignItems:
-    "center",
+    alignItems: "center",
 
-  gap: 6,
+    gap: 6,
 
-  paddingHorizontal: 9,
+    paddingHorizontal: 9,
 
-  borderWidth: 1,
+    borderWidth: 1,
 
-  borderColor:
-    COLORS.border,
+    borderColor: COLORS.border,
 
-  borderRadius: 8,
+    borderRadius: 8,
 
-  backgroundColor:
-    COLORS.light,
-},
+    backgroundColor: COLORS.light,
+  },
 
-datePickerText: {
-  flex: 1,
+  datePickerText: {
+    flex: 1,
 
-  fontSize: 9,
+    fontSize: 9,
 
-  fontWeight: "700",
+    fontWeight: "700",
 
-  color:
-    COLORS.primary,
-},
+    color: COLORS.primary,
+  },
 
-customDateSummary: {
-  marginTop: 7,
+  customDateSummary: {
+    marginTop: 7,
 
-  paddingVertical: 6,
+    paddingVertical: 6,
 
-  paddingHorizontal: 8,
+    paddingHorizontal: 8,
 
-  borderRadius: 7,
+    borderRadius: 7,
 
-  fontSize: 8,
+    fontSize: 8,
 
-  fontWeight: "700",
+    fontWeight: "700",
 
-  textAlign:
-    "center",
+    textAlign: "center",
 
-  color:
-    COLORS.secondary,
+    color: COLORS.secondary,
 
-  backgroundColor:
-    COLORS.light,
-},
-  });
+    backgroundColor: COLORS.light,
+  },
+});

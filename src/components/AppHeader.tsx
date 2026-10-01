@@ -36,7 +36,7 @@ const COLORS = {
 export function AppHeader() {
   const { user } = useAuth();
 
-  console.log("[AppHeader] AUTH USER:", JSON.stringify(user, null, 2));
+  // console.log("[AppHeader] AUTH USER:", JSON.stringify(user, null, 2));
 
   const { language, setLanguage } = useLanguage();
 
@@ -160,6 +160,25 @@ export function AppHeader() {
                 ]}
               >
                 {labels.english}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setLanguage("ar")}
+              style={[
+                styles.languageButton,
+
+                language === "ar" && styles.languageButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.languageText,
+
+                  language === "ar" && styles.languageTextActive,
+                ]}
+              >
+                {labels.arabic}
               </Text>
             </Pressable>
           </View>
@@ -303,7 +322,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
 
-    padding: 3,
+    padding: 2,
+    gap: 2,
 
     borderRadius: 9,
 
@@ -311,10 +331,10 @@ const styles = StyleSheet.create({
   },
 
   languageButton: {
-    minWidth: 32,
+    minWidth: 30,
     height: 28,
 
-    paddingHorizontal: 7,
+    paddingHorizontal: 6,
 
     alignItems: "center",
     justifyContent: "center",

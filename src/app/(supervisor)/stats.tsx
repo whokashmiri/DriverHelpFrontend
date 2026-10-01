@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import { CalendarDays, ChevronDown, X } from "lucide-react-native";
+import { useAuth } from "../../hooks/useAuth";
 
 import {
   getSupervisorDashboardStats,
@@ -54,6 +55,11 @@ const COLORS = {
   successLight: "#EAF7EE",
 };
 
+type StatsDriver = Omit<Driver, "role"> & {
+  role: "driver" | "supervisor";
+  isSupervisorSelf?: boolean;
+};
+
 type DriverFilterValue = "all" | string;
 
 export default function SupervisorStatsScreen() {
@@ -61,11 +67,13 @@ export default function SupervisorStatsScreen() {
 
   const { language } = useLanguage();
 
+  const { user } = useAuth();
+
   const [data, setData] = useState<SupervisorDashboardStatsResponse | null>(
     null,
   );
 
-  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [drivers, setDrivers] = useState<StatsDriver[]>([]);
 
   const [rangeStats, setRangeStats] =
     useState<SupervisorRangeStatsResponse | null>(null);
@@ -109,7 +117,33 @@ export default function SupervisorStatsScreen() {
 
       setData(statsResponse);
 
-      setDrivers(driversResponse.drivers ?? []);
+      const managedDrivers: StatsDriver[] = driversResponse.drivers ?? [];
+
+      const supervisorRow: StatsDriver | null =
+        user?.role === "supervisor" && user.canDeliverOrders === true
+          ? {
+              _id: user.id,
+              id: user.id,
+
+              iqamaId: user.iqamaId,
+
+              name: user.name,
+
+              phone: user.phone ?? null,
+
+              role: "supervisor",
+
+              isActive: user.isActive,
+
+              supervisor: null,
+
+              isSupervisorSelf: true,
+            }
+          : null;
+
+      setDrivers(
+        supervisorRow ? [supervisorRow, ...managedDrivers] : managedDrivers,
+      );
     } catch (err) {
       setError(
         getErrorMessage(
@@ -310,7 +344,7 @@ function CustomFilterCard({
 
   setToDate: (value: string) => void;
 
-  selectedDriver: Driver | null;
+  selectedDriver: StatsDriver | null;
 
   onOpenDriver: () => void;
 
@@ -455,7 +489,7 @@ function FilteredStatsCard({
 
   language: "ar" | "en";
 
-  selectedDriver: Driver | null;
+  selectedDriver: StatsDriver | null;
 }) {
   const { t } = useTranslation();
 
@@ -558,7 +592,7 @@ function DriverFilterModal({
 }: {
   visible: boolean;
 
-  drivers: Driver[];
+  drivers: StatsDriver[];
 
   selectedDriverId: DriverFilterValue;
 
@@ -617,8 +651,19 @@ function DriverFilterModal({
               return (
                 <DriverOption
                   key={id}
-                  title={driver.name}
-                  subtitle={`${t("profile.iqama", "Iqama")}: ${driver.iqamaId}`}
+                  title={
+                    driver.isSupervisorSelf
+                      ? `${driver.name} • ${t("common.you", "You")}`
+                      : driver.name
+                  }
+                  subtitle={
+                    driver.isSupervisorSelf
+                      ? t(
+                          "drivers.supervisorDriverMode",
+                          "Supervisor • Driver Mode",
+                        )
+                      : `${t("profile.iqama", "Iqama")}: ${driver.iqamaId}`
+                  }
                   selected={selectedDriverId === id}
                   onPress={() => onSelect(id)}
                 />
@@ -701,25 +746,20 @@ function PeriodCard({
           value={String(data.orders.delivered)}
         />
 
-             <MetricCard
+        <MetricCard
           label={t("stats.cancelled", "Cancelled")}
           value={String(data.orders.cancelled)}
         />
       </View>
 
       <View style={styles.workBox}>
-      
         <Text style={styles.workLabel}>
           {t("stats.workingTime", "Working Time")}
         </Text>
 
-      
-
         <Text style={styles.workValue}>
           {formatDuration(data.work.totalSeconds, language)}
         </Text>
-
-       
       </View>
     </View>
   );
@@ -759,7 +799,7 @@ function MetricCard({
   );
 }
 
-function getDriverId(driver: Driver) {
+function getDriverId(driver: StatsDriver) {
   return driver._id ?? driver.id ?? null;
 }
 

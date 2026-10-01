@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -16,7 +16,7 @@ import { Bike, Camera, Car, PersonStanding, X } from "lucide-react-native";
 
 import * as ImagePicker from "expo-image-picker";
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { useTranslation } from "react-i18next";
 
@@ -28,7 +28,10 @@ import { useLanguage } from "../../context/LanguageContext";
 
 import type { Driver, VehicleType } from "../../types/driver";
 
+import { getActiveShift } from "../../api/shiftApi";
 import { getErrorMessage } from "../../utils";
+
+import { useAuth } from "../../hooks/useAuth";
 
 const COLORS = {
   black: "#0A090C",
@@ -47,11 +50,17 @@ const COLORS = {
   successBackground: "#EAF7EE",
 };
 
+type DriverListRow = Omit<Driver, "role"> & {
+  role: "driver" | "supervisor";
+
+  isSupervisorSelf?: boolean;
+};
+
 export default function DriversScreen() {
   const { t } = useTranslation();
 
   const { language } = useLanguage();
-
+  const { user } = useAuth();
   const [drivers, setDrivers] = useState<Driver[]>([]);
 
   const [name, setName] = useState("");
@@ -72,6 +81,8 @@ export default function DriversScreen() {
 
   const [isLoading, setIsLoading] = useState(true);
 
+  const [supervisorIsWorking, setSupervisorIsWorking] = useState(false);
+
   const [isCreating, setIsCreating] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
@@ -87,9 +98,14 @@ export default function DriversScreen() {
     try {
       setError(null);
 
-      const response = await getMyDrivers();
+      const [driversResponse, activeShiftResponse] = await Promise.all([
+        getMyDrivers(),
+        getActiveShift(),
+      ]);
 
-      setDrivers(response.drivers ?? []);
+      setDrivers(driversResponse.drivers ?? []);
+
+      setSupervisorIsWorking(Boolean(activeShiftResponse?.shift));
     } catch (err) {
       setError(
         getErrorMessage(err, t("drivers.loadFailed", "Unable to load drivers")),
@@ -99,10 +115,11 @@ export default function DriversScreen() {
     }
   }, [t]);
 
-  useEffect(() => {
-    void loadDrivers();
-  }, [loadDrivers]);
-
+  useFocusEffect(
+    useCallback(() => {
+      void loadDrivers();
+    }, [loadDrivers]),
+  );
   /*
    * PROFILE PICTURE
    */
@@ -233,6 +250,35 @@ export default function DriversScreen() {
       setIsCreating(false);
     }
   };
+
+  const supervisorWorkingRow: DriverListRow | null =
+    supervisorIsWorking && user?.role === "supervisor"
+      ? {
+          _id: user.id,
+
+          id: user.id,
+
+          iqamaId: user.iqamaId,
+
+          name: user.name,
+
+          phone: user.phone ?? null,
+
+          role: "supervisor",
+
+          isActive: user.isActive,
+
+          supervisor: null,
+
+          workStatus: "working",
+
+          isSupervisorSelf: true,
+        }
+      : null;
+
+  const visibleDrivers: DriverListRow[] = supervisorWorkingRow
+    ? [supervisorWorkingRow, ...drivers]
+    : drivers;
 
   return (
     <AppScreen>
@@ -485,7 +531,7 @@ export default function DriversScreen() {
           <View style={styles.loading}>
             <ActivityIndicator color={COLORS.primary} />
           </View>
-        ) : drivers.length === 0 ? (
+        ) : visibleDrivers.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>
               {t("drivers.noDrivers", "No drivers yet")}
@@ -500,15 +546,17 @@ export default function DriversScreen() {
           </View>
         ) : (
           <View style={styles.driverList}>
-            {drivers.map((driver) => {
+            {visibleDrivers.map((driver) => {
               const driverId = driver._id ?? driver.id;
+
+              const isSupervisor = driver.isSupervisorSelf === true;
 
               return (
                 <Pressable
                   key={driverId}
-                  disabled={!driverId}
+                  disabled={!driverId || isSupervisor}
                   onPress={() => {
-                    if (!driverId) {
+                    if (!driverId || isSupervisor) {
                       return;
                     }
 
@@ -552,23 +600,33 @@ export default function DriversScreen() {
                     <View style={styles.driverNameRow}>
                       <Text style={styles.driverName} numberOfLines={1}>
                         {driver.shortName || driver.name}
+
+                        {isSupervisor ? ` • ${t("common.you", "You")}` : ""}
                       </Text>
 
-                      <View style={styles.vehicleMiniBadge}>
-                        <DriverVehicleIcon
-                          vehicleType={driver.vehicleType}
-                          size={11}
-                          color={COLORS.secondary}
-                        />
+                      {isSupervisor ? (
+                        <View style={styles.workingMiniBadge}>
+                          <Text style={styles.workingMiniText}>
+                            {t("supervisor.workingNow", "Working")}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={styles.vehicleMiniBadge}>
+                          <DriverVehicleIcon
+                            vehicleType={driver.vehicleType}
+                            size={11}
+                            color={COLORS.secondary}
+                          />
 
-                        <Text style={styles.driverVehicle}>
-                          {driver.vehicleType === "bike"
-                            ? t("drivers.bike", "Bike")
-                            : driver.vehicleType === "car"
-                              ? t("drivers.car", "Car")
-                              : t("drivers.walking", "Walking")}
-                        </Text>
-                      </View>
+                          <Text style={styles.driverVehicle}>
+                            {driver.vehicleType === "bike"
+                              ? t("drivers.bike", "Bike")
+                              : driver.vehicleType === "car"
+                                ? t("drivers.car", "Car")
+                                : t("drivers.walking", "Walking")}
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
                     {!!driver.shortName && (
@@ -1458,5 +1516,21 @@ const styles = StyleSheet.create({
 
   inactiveText: {
     color: COLORS.error,
+  },
+
+  workingMiniBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+
+    borderRadius: 999,
+
+    backgroundColor: COLORS.successBackground,
+  },
+
+  workingMiniText: {
+    fontSize: 6,
+    fontWeight: "800",
+
+    color: COLORS.success,
   },
 });

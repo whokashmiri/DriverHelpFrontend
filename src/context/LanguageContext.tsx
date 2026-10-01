@@ -44,7 +44,7 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
 
   useEffect(() => {
     const loadLanguage = async () => {
-      console.log("[Language] initialize start");
+      // console.log("[Language] initialize start");
 
       try {
         const savedLanguage = await SecureStore.getItemAsync(LANGUAGE_KEY);
@@ -55,7 +55,7 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
 
         await i18n.changeLanguage(nextLanguage);
       } catch (error) {
-        console.warn("[Language] initialization failed:", error);
+        // console.warn("[Language] initialization failed:", error);
 
         setLanguageState(DEFAULT_LANGUAGE);
 
@@ -65,7 +65,7 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
           console.warn("[Language] i18n fallback failed:", i18nError);
         }
       } finally {
-        console.log("[Language] initialize complete");
+        // console.log("[Language] initialize complete");
 
         setIsLoadingLanguage(false);
       }

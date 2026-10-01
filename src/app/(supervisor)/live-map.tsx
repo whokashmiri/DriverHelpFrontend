@@ -11,7 +11,7 @@ import {
 
 import { getMyDrivers } from "../../api/driverApi";
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { useTranslation } from "react-i18next";
 
@@ -24,6 +24,9 @@ import { AppScreen } from "../../components/AppScreen";
 import { getMyDriversLocations } from "../../api/locationApi";
 
 import { onDriverLocationUpdate } from "../../socket/socket";
+
+import { getActiveShift } from "../../api/shiftApi";
+import { useAuth } from "../../hooks/useAuth";
 
 import type {
   DriverLiveLocationUpdate,
@@ -60,6 +63,8 @@ export default function LiveMapScreen() {
 
   const cameraRef = useRef<any>(null);
 
+  const { user } = useAuth();
+
   const [locations, setLocations] = useState<DriverLocation[]>([]);
 
   /*
@@ -86,20 +91,20 @@ export default function LiveMapScreen() {
     try {
       setError(null);
 
-      const [locationResponse, driversResponse] = await Promise.all([
-        getMyDriversLocations(),
-        getMyDrivers(),
-      ]);
+      const [locationResponse, driversResponse, activeShiftResponse] =
+        await Promise.all([
+          getMyDriversLocations(),
+          getMyDrivers(),
+          getActiveShift(),
+        ]);
 
       setLocations(locationResponse?.locations ?? []);
 
-      /*
-       * Initialize working status
-       * from the exact same driver API
-       * used by SupervisorHomeScreen.
-       */
       const initialStatus: Record<string, boolean> = {};
 
+      /*
+       * Normal managed drivers.
+       */
       for (const driver of driversResponse.drivers ?? []) {
         const id = driver._id ?? driver.id;
 
@@ -108,6 +113,13 @@ export default function LiveMapScreen() {
         }
 
         initialStatus[id] = driver.workStatus === "working";
+      }
+
+      /*
+       * Supervisor working as driver.
+       */
+      if (user?.role === "supervisor" && user.canDeliverOrders === true) {
+        initialStatus[user.id] = Boolean(activeShiftResponse?.shift);
       }
 
       setLiveWorkingStatus(initialStatus);
@@ -121,22 +133,21 @@ export default function LiveMapScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [t]);
+  }, [t, user?.id, user?.role, user?.canDeliverOrders]);
 
-  useEffect(() => {
-    void loadLocations();
-  }, [loadLocations]);
-
+  useFocusEffect(
+    useCallback(() => {
+      void loadLocations();
+    }, [loadLocations]),
+  );
   /*
    * LIVE SOCKET UPDATES
    */
   useEffect(() => {
-    console.log("[LiveMap] Registering driver location listener");
+    // console.log("[LiveMap] Registering driver location listener");
 
     const cleanup = onDriverLocationUpdate(
       (update: DriverLiveLocationUpdate) => {
-       
-
         setLiveWorkingStatus((current) => ({
           ...current,
 
@@ -144,8 +155,6 @@ export default function LiveMapScreen() {
         }));
 
         setLocations((current) => {
-        
-
           const index = current.findIndex(
             (item) => getDriverId(item) === update.driverId,
           );
@@ -875,7 +884,11 @@ function getDriverId(location: DriverLocation) {
     return location.driver;
   }
 
-  return location.driver?._id ?? location.driver?._id ?? null;
+  return (
+    location.driver?._id ??
+    // location.driver?.id ??
+    null
+  );
 }
 
 function getDriver(location: DriverLocation) {

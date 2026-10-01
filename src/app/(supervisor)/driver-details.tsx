@@ -40,8 +40,11 @@ import {
   updateDriverStatus,
 } from "../../api/driverApi";
 
-import { getDriverLocation } from "../../api/locationApi";
-import { getDriverStats } from "../../api/statsApi";
+import { getDriverLocation, getMyLocation } from "../../api/locationApi";
+
+import { getDriverStats, getMyStats } from "../../api/statsApi";
+
+import { useAuth } from "../../hooks/useAuth";
 
 import { useLanguage } from "../../context/LanguageContext";
 
@@ -52,6 +55,12 @@ import type {
 } from "../../types/driver";
 import type { DriverLocation } from "../../types/location";
 import type { DriverStatsResponse } from "../../types/stats";
+
+type DriverDetailsUser = Omit<Driver, "role"> & {
+  role: "driver" | "supervisor";
+
+  isSupervisorSelf?: boolean;
+};
 
 import { formatDateTime, formatDuration, getErrorMessage } from "../../utils";
 
@@ -81,7 +90,13 @@ export default function DriverDetailsScreen() {
 
   const { language } = useLanguage();
 
-  const [driver, setDriver] = useState<Driver | null>(null);
+  const { user } = useAuth();
+
+  const [driver, setDriver] = useState<DriverDetailsUser | null>(null);
+  const isSupervisorSelf =
+    user?.role === "supervisor" &&
+    user?.canDeliverOrders === true &&
+    driverId === user.id;
 
   const [stats, setStats] = useState<DriverStatsResponse | null>(null);
 
@@ -115,17 +130,71 @@ export default function DriverDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    if (!driverId) {
+    if (!driverId || !user) {
       return;
     }
 
     try {
       setError(null);
 
+      const isSelf =
+        user.role === "supervisor" &&
+        user.canDeliverOrders === true &&
+        driverId === user.id;
+
+      /*
+       * Supervisor viewing themselves
+       * as a delivery driver.
+       */
+      if (isSelf) {
+        const [statsResponse, locationResponse] = await Promise.all([
+          getMyStats("today"),
+
+          getMyLocation(),
+        ]);
+
+        const selfDriver: DriverDetailsUser = {
+          _id: user.id,
+
+          id: user.id,
+
+          iqamaId: user.iqamaId,
+
+          name: user.name,
+
+          phone: user.phone ?? null,
+
+          role: "supervisor",
+
+          isActive: user.isActive,
+
+          supervisor: null,
+
+          workStatus: statsResponse.work.activeShift
+            ? "working"
+            : "not_started",
+
+          isSupervisorSelf: true,
+        };
+
+        setDriver(selfDriver);
+
+        // setStats(statsResponse);
+
+        setLocation(locationResponse.location);
+
+        return;
+      }
+
+      /*
+       * Normal managed driver.
+       */
       const [driverResponse, statsResponse, locationResponse] =
         await Promise.all([
           getDriverById(driverId),
+
           getDriverStats(driverId, "today"),
+
           getDriverLocation(driverId),
         ]);
 
@@ -144,7 +213,7 @@ export default function DriverDetailsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [driverId, t]);
+  }, [driverId, user, t]);
 
   useEffect(() => {
     void loadData();
@@ -454,6 +523,15 @@ export default function DriverDetailsScreen() {
                   </Text>
                 )}
 
+                {isSupervisorSelf && (
+                  <Text style={styles.fullName}>
+                    {t(
+                      "drivers.supervisorDriverMode",
+                      "Supervisor • Driver Mode",
+                    )}
+                  </Text>
+                )}
+
                 <View
                   style={[
                     styles.statusBadge,
@@ -474,20 +552,22 @@ export default function DriverDetailsScreen() {
                   </Text>
                 </View>
               </View>
-              <Pressable
-                onPress={openEditDriver}
-                style={({ pressed }) => [
-                  styles.editDriverButton,
+              {!isSupervisorSelf && (
+                <Pressable
+                  onPress={openEditDriver}
+                  style={({ pressed }) => [
+                    styles.editDriverButton,
 
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Pencil size={15} color={COLORS.primary} />
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Pencil size={15} color={COLORS.primary} />
 
-                <Text style={styles.editDriverButtonText}>
-                  {t("common.edit", "Edit")}
-                </Text>
-              </Pressable>
+                  <Text style={styles.editDriverButtonText}>
+                    {t("common.edit", "Edit")}
+                  </Text>
+                </Pressable>
+              )}
             </View>
 
             <View style={styles.card}>
@@ -594,29 +674,31 @@ export default function DriverDetailsScreen() {
               </View>
             )}
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.statusButton,
+            {!isSupervisorSelf && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.statusButton,
 
-                driver.isActive ? styles.disableButton : styles.enableButton,
+                  driver.isActive ? styles.disableButton : styles.enableButton,
 
-                pressed && styles.buttonPressed,
+                  pressed && styles.buttonPressed,
 
-                isUpdatingStatus && styles.buttonDisabled,
-              ]}
-              disabled={isUpdatingStatus}
-              onPress={handleStatusPress}
-            >
-              {isUpdatingStatus ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.buttonText}>
-                  {driver.isActive
-                    ? t("drivers.deactivate", "Deactivate Driver")
-                    : t("drivers.activate", "Activate Driver")}
-                </Text>
-              )}
-            </Pressable>
+                  isUpdatingStatus && styles.buttonDisabled,
+                ]}
+                disabled={isUpdatingStatus}
+                onPress={handleStatusPress}
+              >
+                {isUpdatingStatus ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.buttonText}>
+                    {driver.isActive
+                      ? t("drivers.deactivate", "Deactivate Driver")
+                      : t("drivers.activate", "Activate Driver")}
+                  </Text>
+                )}
+              </Pressable>
+            )}
           </>
         ) : null}
 

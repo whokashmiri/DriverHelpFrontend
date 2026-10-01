@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -9,11 +9,13 @@ import {
   View,
 } from "react-native";
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 import { useTranslation } from "react-i18next";
 
 import { getMyDrivers } from "../../api/driverApi";
+
+import { getActiveShift } from "../../api/shiftApi";
 
 import { AppScreen } from "../../components/AppScreen";
 
@@ -42,12 +44,20 @@ const COLORS = {
 
 type DriverStatFilter = "all" | "working" | "notStarted";
 
+type DashboardDriverRow = Omit<Driver, "role"> & {
+  role: "driver" | "supervisor";
+
+  isSupervisorSelf?: boolean;
+};
+
 export default function SupervisorHomeScreen() {
   const { t } = useTranslation();
 
   const { user } = useAuth();
 
   const [drivers, setDrivers] = useState<Driver[]>([]);
+
+  const [supervisorIsWorking, setSupervisorIsWorking] = useState(false);
 
   const [selectedStat, setSelectedStat] = useState<DriverStatFilter>("all");
 
@@ -59,9 +69,19 @@ export default function SupervisorHomeScreen() {
     try {
       setError(null);
 
-      const response = await getMyDrivers();
+      const [driversResponse, activeShiftResponse] = await Promise.all([
+        getMyDrivers(),
+        getActiveShift(),
+      ]);
 
-      setDrivers(response.drivers ?? []);
+      // console.log(
+      //   "[SupervisorDashboard] Active shift response:",
+      //   JSON.stringify(activeShiftResponse, null, 2),
+      // );
+
+      setDrivers(driversResponse.drivers ?? []);
+
+      setSupervisorIsWorking(Boolean(activeShiftResponse?.shift));
     } catch (err) {
       setError(
         getErrorMessage(
@@ -74,49 +94,75 @@ export default function SupervisorHomeScreen() {
     }
   }, [t]);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [loadData]),
+  );
 
   /*
    * ALL DRIVERS.
    */
+
   const totalDrivers = drivers.length;
 
-  /*
-   * WORKING:
-   *
-   * Driver has started at least
-   * one shift today.
-   */
-  const workingDrivers = drivers.filter(
+  const supervisorWorkingRow: DashboardDriverRow | null =
+    supervisorIsWorking && user
+      ? {
+          _id: user.id,
+
+          id: user.id,
+
+          name: user.name,
+
+          iqamaId: user.iqamaId,
+
+          phone: user.phone ?? null,
+
+          role: "supervisor",
+
+          isActive: user.isActive,
+
+          supervisor: null,
+
+          workStatus: "working",
+
+          isSupervisorSelf: true,
+        }
+      : null;
+
+  const actualWorkingDrivers: DashboardDriverRow[] = drivers.filter(
     (driver) => driver.workStatus === "working",
   );
 
-  /*
-   * NOT WORKING:
-   *
-   * Driver has NOT started
-   * any shift today.
-   */
-  const notWorkingDrivers = drivers.filter(
+  const workingDrivers: DashboardDriverRow[] = supervisorWorkingRow
+    ? [supervisorWorkingRow, ...actualWorkingDrivers]
+    : actualWorkingDrivers;
+
+  const notWorkingDrivers: DashboardDriverRow[] = drivers.filter(
     (driver) => driver.workStatus === "not_started",
   );
+
+  /*
+   * Default dashboard list.
+   *
+   * Supervisor is shown here only
+   * while they have an active shift.
+   */
+  const allVisibleRows: DashboardDriverRow[] = supervisorWorkingRow
+    ? [supervisorWorkingRow, ...drivers]
+    : drivers;
 
   const workingCount = workingDrivers.length;
 
   const notWorkingCount = notWorkingDrivers.length;
 
-  /*
-   * Which drivers should be shown
-   * below the stat buttons.
-   */
-  const visibleDrivers =
+  const visibleDrivers: DashboardDriverRow[] =
     selectedStat === "working"
       ? workingDrivers
       : selectedStat === "notStarted"
         ? notWorkingDrivers
-        : drivers;
+        : allVisibleRows;
 
   const sectionTitle =
     selectedStat === "working"
@@ -280,18 +326,22 @@ export default function SupervisorHomeScreen() {
   );
 }
 
-function DriverRow({ driver }: { driver: Driver }) {
+function DriverRow({ driver }: { driver: DashboardDriverRow }) {
   const { t } = useTranslation();
 
+  const { user } = useAuth();
+
   const driverId = driver._id ?? driver.id;
+
+  const isSupervisor = driver.isSupervisorSelf === true;
 
   const hasStarted = driver.workStatus === "working";
 
   return (
     <Pressable
-      disabled={!driverId}
+      disabled={!driverId || isSupervisor}
       onPress={() => {
-        if (!driverId) {
+        if (!driverId || isSupervisor) {
           return;
         }
 
@@ -318,6 +368,8 @@ function DriverRow({ driver }: { driver: Driver }) {
       <View style={styles.driverInfo}>
         <Text style={styles.driverName} numberOfLines={1}>
           {driver.name}
+
+          {isSupervisor ? ` • ${t("common.you", "You")}` : ""}
         </Text>
 
         <Text style={styles.driverIqama} numberOfLines={1}>
