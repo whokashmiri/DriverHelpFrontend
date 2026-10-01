@@ -45,12 +45,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(response.user);
 
       void connectSocket().catch((error) => {
-        console.warn("[Socket] Initial connection failed:", error);
+        // console.warn("[Socket] Initial connection failed:", error);
       });
 
       return response.user;
     } catch (error) {
-      console.log("[Auth] Session restore failed:", error);
+      // console.log("[Auth] Session restore failed:", error);
 
       setUser(null);
 
@@ -62,16 +62,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     const initializeAuth = async () => {
-      console.log("[Auth] initialize start");
+      // console.log("[Auth] initialize start");
 
       try {
         await refreshUser();
 
-        console.log("[Auth] refresh finished");
+        // console.log("[Auth] refresh finished");
       } catch (error) {
-        console.error("[Auth] initialization error", error);
+        // console.error("[Auth] initialization error", error);
       } finally {
-        console.log("[Auth] loading false");
+        // console.log("[Auth] loading false");
 
         setIsLoading(false);
       }
