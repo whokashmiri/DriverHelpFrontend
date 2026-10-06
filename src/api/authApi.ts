@@ -11,6 +11,7 @@ export async function login(payload: LoginPayload) {
   const response = await api.post<AuthResponse>("/auth/login", payload);
 
   const token = response.data?.token;
+ 
 
   if (token) {
     await saveToken(token);

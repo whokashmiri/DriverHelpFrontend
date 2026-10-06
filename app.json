@@ -1,33 +1,28 @@
 {
   "expo": {
-    "name": "Tosh",
+    "name": "Al-Moussel",
     "slug": "Tosh",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+
+    "icon": "./assets/ic_launcher.png",
+
     "scheme": "tosh",
     "userInterfaceStyle": "automatic",
 
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/ic_launcher.png"
     },
 
     "android": {
       "package": "com.anonymous.Tosh",
-
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-
+      "icon": "./assets/ic_launcher.png",
       "predictiveBackGestureEnabled": false
     },
 
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/ic_launcher.png"
     },
 
     "plugins": [
@@ -37,8 +32,19 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/splashscreen_logo.png",
           "imageWidth": 76
+        }
+      ],
+
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow AL-Moussel to access your location while you are working.",
+          "locationAlwaysAndWhenInUsePermission": "Allow AL-Moussel to share your live location while your shift is active.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
 

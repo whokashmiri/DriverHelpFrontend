@@ -38,7 +38,7 @@ export default function TermsScreen() {
           title={t("terms.useTitle", "Use of the Application")}
           body={t(
             "terms.useBody",
-            "The TOSH application is provided for authorized drivers and supervisors to manage delivery operations, work shifts, orders, and related operational information.",
+            "The AL-MOUSSEL application is provided for authorized drivers and supervisors to manage delivery operations, work shifts, orders, and related operational information.",
           )}
           textAlign={textAlign}
         />

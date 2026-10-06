@@ -11,9 +11,10 @@
     "viewAll": "View All Drivers",
     "retry": "Retry",
 
-    "cancel":"Cancel",
-    "save":"Save",
-    "you":"You"
+    "cancel": "Cancel",
+    "save": "Save",
+    "you": "You",
+    "name": "AL-MOUSSEL"
   },
 
   "stats": {
@@ -89,7 +90,7 @@
     "lastUpdated": "Last updated: September 2026",
 
     "useTitle": "Use of the Application",
-    "useBody": "The TOSH application is provided for authorized drivers and supervisors to manage delivery operations, work shifts, orders, and related operational information.",
+    "useBody": "The AL-MOUSSEL application is provided for authorized drivers and supervisors to manage delivery operations, work shifts, orders, and related operational information.",
 
     "locationTitle": "Location Information",
     "locationBody": "Driver location information may be collected during active work shifts to support operational monitoring, delivery management, and route history.",
@@ -124,10 +125,10 @@
     "done": "Done",
     "noOrdersForPeriod": "No orders found for this period",
 
-    "deactivateConfirmTitle":"Deactivate Driver?",
-    "deactivateConfirmMessage":"Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
-    "deactivate":"Deactivate Driver",
-    "passwordOptional":"Leave empty to keep current password"
+    "deactivateConfirmTitle": "Deactivate Driver?",
+    "deactivateConfirmMessage": "Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
+    "deactivate": "Deactivate Driver",
+    "passwordOptional": "Leave empty to keep current password"
   },
 
   "orders": {
@@ -170,21 +171,21 @@
     "photoSaved": "Saved",
     "photoLocked": "Locked",
     "takePhoto": "Take photo",
-     "cancelOrder":"Cancel Order",
-     "cancelDescription":"Select a reason and add photo evidence." ,
-     "cancelReason":"Reason",
-     "cancelNotes": "Details",
-     "cancelNotesPlaceholder":"Explain what happened",
-     "cancelPhotos":"Photo Evidence",
-     "cancelPhotoRequiredHint":"At least one image is required",
-     "addPhotos":"Add",
-     "confirmCancel":"Cancel Order",
-     "cancelCustomerUnavailable":"Customer unavailable",
-     "cancelWrongAddress": "Wrong address",
-     "cancelVehicleIssue": "Vehicle issue",
-     "cancelOrderIssue": "Order issue",
-     "cancelEmergency": "Emergency",
-     "cancelOther": "Other"
+    "cancelOrder": "Cancel Order",
+    "cancelDescription": "Select a reason and add photo evidence.",
+    "cancelReason": "Reason",
+    "cancelNotes": "Details",
+    "cancelNotesPlaceholder": "Explain what happened",
+    "cancelPhotos": "Photo Evidence",
+    "cancelPhotoRequiredHint": "At least one image is required",
+    "addPhotos": "Add",
+    "confirmCancel": "Cancel Order",
+    "cancelCustomerUnavailable": "Customer unavailable",
+    "cancelWrongAddress": "Wrong address",
+    "cancelVehicleIssue": "Vehicle issue",
+    "cancelOrderIssue": "Order issue",
+    "cancelEmergency": "Emergency",
+    "cancelOther": "Other"
   },
 
   "shifts": {
@@ -196,7 +197,7 @@
     "completed": "Completed",
     "start": "Start",
     "end": "End",
-     "finishTitle": "Finish your shift?",
+    "finishTitle": "Finish your shift?",
     "finishDescription": "You've done enough for today. Finish your shift and get some rest?",
     "timeWorked": "Time worked",
     "getSomeRest": "End Shift",
@@ -224,7 +225,7 @@
     "title": "Profile",
     "supervisor": "Supervisor",
 
-    "password":"New Password"
+    "password": "New Password"
   },
 
   "auth": {
@@ -260,8 +261,8 @@
     "iqamaPlaceholder": "Enter Iqama ID",
     "phonePlaceholder": "Enter phone number",
     "passwordPlaceholder": "Minimum 6 characters",
-    "shortName":"Short Name",
-    "shortNamePlaceholder":"Ahmed",
+    "shortName": "Short Name",
+    "shortNamePlaceholder": "Ahmed",
 
     "createDriver": "Create Driver",
 

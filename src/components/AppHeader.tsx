@@ -7,6 +7,8 @@ import {
   X,
 } from "lucide-react-native";
 
+import { useTranslation } from "react-i18next";
+
 import { useMemo, useState } from "react";
 import {
   Modal,
@@ -35,6 +37,7 @@ const COLORS = {
 
 export function AppHeader() {
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   // console.log("[AppHeader] AUTH USER:", JSON.stringify(user, null, 2));
 
@@ -109,7 +112,7 @@ export function AppHeader() {
     <>
       <View style={styles.container}>
         <View style={styles.brandContainer}>
-          <Text style={styles.brand}>TOSH</Text>
+          <Text style={styles.brand}>{t("common.name", "AL-MOUSSEL")}</Text>
           <Text style={styles.version}>{version.build}</Text>
         </View>
         <View style={styles.actions}>
@@ -205,7 +208,7 @@ export function AppHeader() {
             onPress={() => {}}
           >
             <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>TOSH</Text>
+              <Text style={styles.menuTitle}>AL-MOUSSEL</Text>
 
               <TouchableOpacity
                 onPress={closeMenu}
