@@ -269,13 +269,13 @@ export default function SupervisorHomeScreen() {
                 </View>
               ) : (
                 visibleDrivers
-                  .slice(0, 5)
+                  .slice(0, 10)
                   .map((driver) => (
                     <DriverRow key={driver._id ?? driver.id} driver={driver} />
                   ))
               )}
 
-              {visibleDrivers.length > 5 && (
+              {visibleDrivers.length > 10 && (
                 <Pressable
                   onPress={() => router.push("/(supervisor)/drivers")}
                   style={({ pressed }) => [
@@ -361,13 +361,15 @@ function DriverRow({ driver }: { driver: DashboardDriverRow }) {
     >
       <View style={styles.driverAvatar}>
         <Text style={styles.driverAvatarText}>
-          {driver.name?.trim().charAt(0).toUpperCase() || "D"}
+          {driver.shortName?.trim().charAt(0).toUpperCase() ||
+            driver.name?.trim().charAt(0).toUpperCase() ||
+            "D"}
         </Text>
       </View>
 
       <View style={styles.driverInfo}>
         <Text style={styles.driverName} numberOfLines={1}>
-          {driver.name}
+          {driver.shortName || driver.name}
 
           {isSupervisor ? ` • ${t("common.you", "You")}` : ""}
         </Text>
