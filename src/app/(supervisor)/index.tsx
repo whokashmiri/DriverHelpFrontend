@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,15 +14,15 @@ import { router, useFocusEffect } from "expo-router";
 
 import { useTranslation } from "react-i18next";
 
-import { getMyDrivers } from "../../api/driverApi";
-
 import { getActiveShift } from "../../api/shiftApi";
+
+import { getSupervisorDriversDashboard } from "../../api/statsApi";
 
 import { AppScreen } from "../../components/AppScreen";
 
 import { useAuth } from "../../hooks/useAuth";
 
-import type { Driver } from "../../types/driver";
+import type { SupervisorDashboardDriverItem } from "../../types/stats";
 
 import { getErrorMessage } from "../../utils";
 
@@ -44,18 +45,107 @@ const COLORS = {
 
 type DriverStatFilter = "all" | "working" | "notStarted";
 
-type DashboardDriverRow = Omit<Driver, "role"> & {
+type DashboardDriverRow = {
+  _id: string;
+
+  name: string;
+
+  profilePictureUrl?: string | null;
+
+  shortName?: string | null;
+
+  iqamaId: string;
+
+  phone?: string | null;
+
+  isActive: boolean;
+
   role: "driver" | "supervisor";
 
   isSupervisorSelf?: boolean;
+
+  workingNow: boolean;
+
+  orders: {
+    deliveredToday: number;
+
+    deliveredThisMonth: number;
+  };
+
+  todayWork: {
+    firstShiftStartedAt: string | null;
+
+    lastShiftEndedAt: string | null;
+
+    totalSeconds: number;
+
+    totalHours: number;
+
+    workingNow: boolean;
+  };
 };
+
+/**
+ * Format shift time in Riyadh time.
+ */
+function formatTime(value: string | null | undefined) {
+  if (!value) {
+    return "--";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+
+    timeZone: "Asia/Riyadh",
+  }).format(date);
+}
+
+/**
+ * Format seconds as:
+ *
+ * 7h 30m
+ *
+ * instead of 7.50 or 7.30.
+ */
+function formatDuration(seconds: number | null | undefined) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+
+  const totalMinutes = Math.floor(safeSeconds / 60);
+
+  const hours = Math.floor(totalMinutes / 60);
+
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0 && minutes === 0) {
+    return "0m";
+  }
+
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${minutes}m`;
+}
 
 export default function SupervisorHomeScreen() {
   const { t } = useTranslation();
 
   const { user } = useAuth();
 
-  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [dashboardDrivers, setDashboardDrivers] = useState<
+    SupervisorDashboardDriverItem[]
+  >([]);
 
   const [supervisorIsWorking, setSupervisorIsWorking] = useState(false);
 
@@ -69,23 +159,20 @@ export default function SupervisorHomeScreen() {
     try {
       setError(null);
 
-      const [driversResponse, activeShiftResponse] = await Promise.all([
-        getMyDrivers(),
+      const [dashboardResponse, activeShiftResponse] = await Promise.all([
+        getSupervisorDriversDashboard(),
+
         getActiveShift(),
       ]);
 
-      // console.log(
-      //   "[SupervisorDashboard] Active shift response:",
-      //   JSON.stringify(activeShiftResponse, null, 2),
-      // );
-
-      setDrivers(driversResponse.drivers ?? []);
+      setDashboardDrivers(dashboardResponse.drivers ?? []);
 
       setSupervisorIsWorking(Boolean(activeShiftResponse?.shift));
     } catch (err) {
       setError(
         getErrorMessage(
           err,
+
           t("supervisor.dashboardLoadFailed", "Unable to load dashboard"),
         ),
       );
@@ -101,63 +188,116 @@ export default function SupervisorHomeScreen() {
   );
 
   /*
-   * ALL DRIVERS.
+   * Convert backend dashboard
+   * response into UI rows.
    */
+  const driverRows: DashboardDriverRow[] = dashboardDrivers.map((item) => ({
+    _id: item.driver._id,
 
-  const totalDrivers = drivers.length;
+    name: item.driver.name,
+    profilePictureUrl: item.driver?.profilePicture?.url ?? null,
 
+    shortName: item.driver.shortName,
+
+    iqamaId: item.driver.iqamaId,
+
+    phone: item.driver.phone ?? null,
+
+    isActive: item.driver.isActive,
+
+    role: "driver",
+
+    workingNow: item.todayWork.workingNow,
+
+    orders: item.orders,
+
+    todayWork: item.todayWork,
+  }));
+
+  /*
+   * Supervisor can also work as
+   * a delivery user.
+   *
+   * Keep existing behavior:
+   * show supervisor only when
+   * supervisor currently has
+   * an active shift.
+   *
+   * Driver statistics are not
+   * rendered for this special row.
+   */
   const supervisorWorkingRow: DashboardDriverRow | null =
     supervisorIsWorking && user
       ? {
           _id: user.id,
 
-          id: user.id,
-
           name: user.name,
+
+          shortName: user.name,
 
           iqamaId: user.iqamaId,
 
           phone: user.phone ?? null,
 
-          role: "supervisor",
-
           isActive: user.isActive,
 
-          supervisor: null,
-
-          workStatus: "working",
+          role: "supervisor",
 
           isSupervisorSelf: true,
+
+          workingNow: true,
+
+          orders: {
+            deliveredToday: 0,
+
+            deliveredThisMonth: 0,
+          },
+
+          todayWork: {
+            firstShiftStartedAt: null,
+
+            lastShiftEndedAt: null,
+
+            totalSeconds: 0,
+
+            totalHours: 0,
+
+            workingNow: true,
+          },
         }
       : null;
 
-  const actualWorkingDrivers: DashboardDriverRow[] = drivers.filter(
-    (driver) => driver.workStatus === "working",
-  );
+  /*
+   * Actual managed driver count.
+   *
+   * Supervisor is intentionally
+   * not included here.
+   */
+  const totalDrivers = driverRows.length;
 
+  const actualWorkingDrivers = driverRows.filter((driver) => driver.workingNow);
+
+  const notWorkingDrivers = driverRows.filter((driver) => !driver.workingNow);
+
+  /*
+   * Preserve existing behavior:
+   *
+   * Supervisor appears in the
+   * Working list when working.
+   */
   const workingDrivers: DashboardDriverRow[] = supervisorWorkingRow
     ? [supervisorWorkingRow, ...actualWorkingDrivers]
     : actualWorkingDrivers;
 
-  const notWorkingDrivers: DashboardDriverRow[] = drivers.filter(
-    (driver) => driver.workStatus === "not_started",
-  );
-
-  /*
-   * Default dashboard list.
-   *
-   * Supervisor is shown here only
-   * while they have an active shift.
-   */
   const allVisibleRows: DashboardDriverRow[] = supervisorWorkingRow
-    ? [supervisorWorkingRow, ...drivers]
-    : drivers;
+    ? [supervisorWorkingRow, ...driverRows]
+    : driverRows;
 
-  const workingCount = workingDrivers.length;
+  const workingCount = actualWorkingDrivers.length;
 
   const notWorkingCount = notWorkingDrivers.length;
 
-  const visibleDrivers: DashboardDriverRow[] =
+  const visibleDrivers =
     selectedStat === "working"
       ? workingDrivers
       : selectedStat === "notStarted"
@@ -173,155 +313,154 @@ export default function SupervisorHomeScreen() {
 
   return (
     <AppScreen>
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.heading}>
-          <Text style={styles.title}>
-            {t("supervisor.dashboard", "Supervisor Dashboard")}
-          </Text>
-
-          {!!user?.name && <Text style={styles.subtitle}>{user.name}</Text>}
-        </View>
-
-        {isLoading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={COLORS.primary} />
-          </View>
-        ) : error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : (
-          <>
-            {/*
-             * 3 COMPACT STATS
-             */}
-            <View style={styles.statsRow}>
-              <StatCard
-                label={t("supervisor.totalDrivers", "Drivers")}
-                value={String(totalDrivers)}
-                active={selectedStat === "all"}
-                onPress={() => setSelectedStat("all")}
-              />
-
-              <StatCard
-                label={t("supervisor.workingNow", "Working")}
-                value={String(workingCount)}
-                active={selectedStat === "working"}
-                onPress={() => setSelectedStat("working")}
-              />
-
-              <StatCard
-                label={t("supervisor.notWorking", "Not Working")}
-                value={String(notWorkingCount)}
-                active={selectedStat === "notStarted"}
-                onPress={() => setSelectedStat("notStarted")}
-              />
-            </View>
-
-            {/*
-             * DRIVER LIST
-             */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleRow}>
-                  <Text style={styles.sectionTitle}>{sectionTitle}</Text>
-
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countText}>
-                      {visibleDrivers.length}
-                    </Text>
-                  </View>
-                </View>
-
-                <Pressable
-                  onPress={() => router.push("/(supervisor)/drivers")}
-                  style={({ pressed }) => [
-                    styles.createDriverButton,
-
-                    pressed && styles.createDriverButtonPressed,
-                  ]}
-                >
-                  <Text style={styles.createDriverButtonText}>
-                    + {t("drivers.createDriver", "Create Driver")}
-                  </Text>
-                </Pressable>
-              </View>
-
-              {visibleDrivers.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>
-                    {selectedStat === "working"
-                      ? t(
-                          "supervisor.noWorkingDrivers",
-                          "No drivers have started work yet",
-                        )
-                      : selectedStat === "notStarted"
-                        ? t(
-                            "supervisor.allDriversStarted",
-                            "All drivers have started work",
-                          )
-                        : t("supervisor.noDrivers", "No drivers found")}
-                  </Text>
-                </View>
-              ) : (
-                visibleDrivers
-                  .slice(0, 10)
-                  .map((driver) => (
-                    <DriverRow key={driver._id ?? driver.id} driver={driver} />
-                  ))
-              )}
-
-              {visibleDrivers.length > 10 && (
-                <Pressable
-                  onPress={() => router.push("/(supervisor)/drivers")}
-                  style={({ pressed }) => [
-                    styles.viewAllButton,
-
-                    pressed && styles.viewAllButtonPressed,
-                  ]}
-                >
-                  <Text style={styles.viewAllText}>
-                    {t("common.viewAll", "View All Drivers")}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-
-            {/*
-             * QUICK ACTIONS
-             */}
-            <Text style={styles.actionsTitle}>
-              {t("supervisor.quickActions", "Quick Actions")}
+      <View style={styles.screen}>
+        <View style={styles.content}>
+          <View style={styles.heading}>
+            <Text style={styles.title}>
+              {t("supervisor.dashboard", "Supervisor Dashboard")}
             </Text>
 
-            <View style={styles.actions}>
-              <DashboardButton
-                title={t("supervisor.allDrivers", "Drivers")}
-                onPress={() => router.push("/(supervisor)/drivers")}
-              />
+            {!!user?.name && <Text style={styles.subtitle}>{user.name}</Text>}
+          </View>
 
-              <DashboardButton
-                title={t("supervisor.liveMap", "Live Map")}
-                onPress={() => router.push("/(supervisor)/live-map")}
-              />
-
-              <DashboardButton
-                title={t("stats.title", "Stats")}
-                onPress={() => router.push("/(supervisor)/stats")}
-              />
-
-              <DashboardButton
-                title={t("orders.title", "Orders")}
-                onPress={() => router.push("/(supervisor)/orders")}
-              />
+          {isLoading ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={COLORS.primary} />
             </View>
-          </>
-        )}
-      </ScrollView>
+          ) : error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : (
+            <>
+              {/*
+               * TOP STAT CARDS
+               */}
+              <View style={styles.statsRow}>
+                <StatCard
+                  label={t("supervisor.totalDrivers", "Drivers")}
+                  value={String(totalDrivers)}
+                  active={selectedStat === "all"}
+                  onPress={() => setSelectedStat("all")}
+                />
+
+                <StatCard
+                  label={t("supervisor.workingNow", "Working")}
+                  value={String(workingCount)}
+                  active={selectedStat === "working"}
+                  onPress={() => setSelectedStat("working")}
+                />
+
+                <StatCard
+                  label={t("supervisor.notWorking", "Not Working")}
+                  value={String(notWorkingCount)}
+                  active={selectedStat === "notStarted"}
+                  onPress={() => setSelectedStat("notStarted")}
+                />
+              </View>
+
+              {/*
+               * DRIVER SECTION
+               *
+               * This takes remaining
+               * available height.
+               */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleRow}>
+                    <Text style={styles.sectionTitle}>{sectionTitle}</Text>
+
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countText}>
+                        {visibleDrivers.length}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    onPress={() => router.push("/(supervisor)/drivers")}
+                    style={({ pressed }) => [
+                      styles.createDriverButton,
+
+                      pressed && styles.createDriverButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.createDriverButtonText}>
+                      + {t("drivers.createDriver", "Create Driver")}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {visibleDrivers.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyText}>
+                      {selectedStat === "working"
+                        ? t(
+                            "supervisor.noWorkingDrivers",
+                            "No drivers are working",
+                          )
+                        : selectedStat === "notStarted"
+                          ? t(
+                              "supervisor.allDriversStarted",
+                              "All drivers are working",
+                            )
+                          : t("supervisor.noDrivers", "No drivers found")}
+                    </Text>
+                  </View>
+                ) : (
+                  /*
+                   * ONLY THIS AREA SCROLLS.
+                   *
+                   * Quick actions below
+                   * remain on screen.
+                   */
+                  <ScrollView
+                    style={styles.driverList}
+                    contentContainerStyle={styles.driverListContent}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                  >
+                    {visibleDrivers.map((driver) => (
+                      <DriverRow key={driver._id} driver={driver} />
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
+
+              {/*
+               * FIXED QUICK ACTIONS
+               */}
+              <View style={styles.quickActionsContainer}>
+                <Text style={styles.actionsTitle}>
+                  {t("supervisor.quickActions", "Quick Actions")}
+                </Text>
+
+                <View style={styles.actions}>
+                  <DashboardButton
+                    title={t("supervisor.allDrivers", "Drivers")}
+                    onPress={() => router.push("/(supervisor)/drivers")}
+                  />
+
+                  <DashboardButton
+                    title={t("supervisor.liveMap", "Live Map")}
+                    onPress={() => router.push("/(supervisor)/live-map")}
+                  />
+
+                  <DashboardButton
+                    title={t("stats.title", "Stats")}
+                    onPress={() => router.push("/(supervisor)/stats")}
+                  />
+
+                  <DashboardButton
+                    title={t("orders.title", "Orders")}
+                    onPress={() => router.push("/(supervisor)/orders")}
+                  />
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
     </AppScreen>
   );
 }
@@ -329,13 +468,11 @@ export default function SupervisorHomeScreen() {
 function DriverRow({ driver }: { driver: DashboardDriverRow }) {
   const { t } = useTranslation();
 
-  const { user } = useAuth();
-
-  const driverId = driver._id ?? driver.id;
+  const driverId = driver._id;
 
   const isSupervisor = driver.isSupervisorSelf === true;
 
-  const hasStarted = driver.workStatus === "working";
+  const hasStarted = driver.workingNow;
 
   return (
     <Pressable
@@ -359,54 +496,132 @@ function DriverRow({ driver }: { driver: DashboardDriverRow }) {
         pressed && styles.driverRowPressed,
       ]}
     >
-      <View style={styles.driverAvatar}>
-        <Text style={styles.driverAvatarText}>
-          {driver.shortName?.trim().charAt(0).toUpperCase() ||
-            driver.name?.trim().charAt(0).toUpperCase() ||
-            "D"}
-        </Text>
-      </View>
+      {/*
+       * DRIVER IDENTITY ROW
+       */}
+      <View style={styles.driverTopRow}>
+        <View style={styles.driverAvatar}>
+          {driver.profilePictureUrl ? (
+            <Image
+              source={{
+                uri: driver.profilePictureUrl,
+              }}
+              style={styles.driverAvatarImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <Text style={styles.driverAvatarText}>
+              {driver.shortName?.trim().charAt(0).toUpperCase() ||
+                driver.name?.trim().charAt(0).toUpperCase() ||
+                "D"}
+            </Text>
+          )}
+        </View>
 
-      <View style={styles.driverInfo}>
-        <Text style={styles.driverName} numberOfLines={1}>
-          {driver.shortName || driver.name}
+        <View style={styles.driverInfo}>
+          <Text style={styles.driverName} numberOfLines={1}>
+            {driver.shortName || driver.name}
 
-          {isSupervisor ? ` • ${t("common.you", "You")}` : ""}
-        </Text>
+            {isSupervisor ? ` • ${t("common.you", "You")}` : ""}
+          </Text>
 
-        <Text style={styles.driverIqama} numberOfLines={1}>
-          {driver.iqamaId}
-        </Text>
-      </View>
+          <Text style={styles.driverIqama} numberOfLines={1}>
+            {driver.iqamaId}
+          </Text>
+        </View>
 
-      <View
-        style={[
-          styles.workBadge,
+        {!isSupervisor && (
+          <View style={styles.driverInfo}>
+            <DriverMetric
+              label={t("supervisor.deliveredToday", "Today")}
+              value={String(driver.orders.deliveredToday)}
+            />
+          </View>
+        )}
 
-          hasStarted ? styles.workingBadge : styles.notStartedBadge,
-        ]}
-      >
-        <Text
+        <View
           style={[
-            styles.workBadgeText,
+            styles.workBadge,
 
-            hasStarted ? styles.workingText : styles.notStartedText,
+            hasStarted ? styles.workingBadge : styles.notStartedBadge,
           ]}
         >
-          {hasStarted
-            ? t("supervisor.workingNow", "Working")
-            : t("supervisor.notWorking", "Not Working")}
-        </Text>
+          <Text
+            style={[
+              styles.workBadgeText,
+
+              hasStarted ? styles.workingText : styles.notStartedText,
+            ]}
+          >
+            {hasStarted
+              ? t("supervisor.workingNow", "Working")
+              : t("supervisor.notWorking", "Not Working")}
+          </Text>
+        </View>
+
+        {!driver.isActive && (
+          <View style={styles.inactiveAccountBadge}>
+            <Text style={styles.inactiveAccountText}>
+              {t("common.inactive", "Inactive")}
+            </Text>
+          </View>
+        )}
       </View>
 
-      {!driver.isActive && (
-        <View style={styles.inactiveAccountBadge}>
-          <Text style={styles.inactiveAccountText}>
-            {t("common.inactive", "Inactive")}
-          </Text>
+      {/*
+       * SUPERVISOR SPECIAL ROW:
+       * don't show driver-specific
+       * dashboard statistics.
+       */}
+      {!isSupervisor && (
+        <View style={styles.driverMetrics}>
+          {/* <DriverMetric
+            label={t("supervisor.deliveredToday", "Today")}
+            value={String(driver.orders.deliveredToday)}
+          /> */}
+
+          <DriverMetric
+            label={t("supervisor.deliveredMonth", "Month")}
+            value={String(driver.orders.deliveredThisMonth)}
+          />
+
+          <DriverMetric
+            label={t("supervisor.firstShift", "Start")}
+            value={formatTime(driver.todayWork.firstShiftStartedAt)}
+          />
+
+          <DriverMetric
+            label={t("supervisor.lastShift", "Finish")}
+            value={formatTime(driver.todayWork.lastShiftEndedAt)}
+          />
+
+          <DriverMetric
+            label={t("supervisor.totalTime", "Total")}
+            value={formatDuration(driver.todayWork.totalSeconds)}
+          />
         </View>
       )}
     </Pressable>
+  );
+}
+
+function DriverMetric({
+  label,
+  value,
+}: {
+  label: string;
+
+  value: string;
+}) {
+  return (
+    <View style={styles.driverMetric}>
+      <Text style={styles.driverMetricLabel} numberOfLines={1}>
+        {label} :
+      </Text>
+      <Text style={styles.driverMetricValue} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -480,15 +695,25 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.light,
   },
 
+  /*
+   * flex: 1 is important.
+   *
+   * The dashboard itself no
+   * longer scrolls.
+   */
   content: {
+    flex: 1,
+
     width: "100%",
     maxWidth: 720,
 
     alignSelf: "center",
 
     paddingHorizontal: 14,
+
     paddingTop: 10,
-    paddingBottom: 30,
+
+    paddingBottom: 12,
   },
 
   heading: {
@@ -497,6 +722,7 @@ const styles = StyleSheet.create({
 
   title: {
     fontSize: 17,
+
     fontWeight: "800",
 
     color: COLORS.primary,
@@ -511,14 +737,16 @@ const styles = StyleSheet.create({
   },
 
   center: {
-    minHeight: 180,
+    flex: 1,
 
     alignItems: "center",
+
     justifyContent: "center",
   },
 
   errorBox: {
     paddingHorizontal: 10,
+
     paddingVertical: 8,
 
     borderRadius: 10,
@@ -533,14 +761,14 @@ const styles = StyleSheet.create({
   },
 
   /*
-   * THREE STAT CARDS
+   * TOP STATS
    */
   statsRow: {
     flexDirection: "row",
 
     gap: 7,
 
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
   statCard: {
@@ -551,14 +779,17 @@ const styles = StyleSheet.create({
     height: 64,
 
     paddingHorizontal: 5,
+
     paddingVertical: 7,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 10,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     backgroundColor: COLORS.white,
@@ -576,6 +807,7 @@ const styles = StyleSheet.create({
 
   statValue: {
     fontSize: 17,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -589,6 +821,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
 
     fontSize: 8,
+
     fontWeight: "700",
 
     color: COLORS.muted,
@@ -602,17 +835,29 @@ const styles = StyleSheet.create({
 
   /*
    * DRIVER SECTION
+   *
+   * flex: 1 means it fills
+   * remaining screen space.
+   *
+   * Quick actions remain below.
    */
   section: {
+    flex: 1,
+
+    minHeight: 0,
+
     paddingHorizontal: 10,
+
     paddingTop: 9,
+
     paddingBottom: 7,
 
-    marginBottom: 12,
+    marginBottom: 10,
 
     borderRadius: 12,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     backgroundColor: COLORS.white,
@@ -622,6 +867,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
 
     alignItems: "center",
+
     justifyContent: "space-between",
 
     marginBottom: 5,
@@ -637,6 +883,7 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontSize: 12,
+
     fontWeight: "800",
 
     color: COLORS.primary,
@@ -644,6 +891,7 @@ const styles = StyleSheet.create({
 
   countBadge: {
     minWidth: 20,
+
     height: 20,
 
     marginLeft: 6,
@@ -651,6 +899,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 10,
@@ -660,6 +909,7 @@ const styles = StyleSheet.create({
 
   countText: {
     fontSize: 8,
+
     fontWeight: "800",
 
     color: COLORS.secondary,
@@ -673,6 +923,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -686,19 +937,32 @@ const styles = StyleSheet.create({
 
   createDriverButtonText: {
     fontSize: 8,
+
     fontWeight: "800",
 
     color: COLORS.white,
   },
 
+  /*
+   * Independent driver scroll.
+   */
+  driverList: {
+    flex: 1,
+
+    minHeight: 0,
+  },
+
+  driverListContent: {
+    flexGrow: 0,
+  },
+
+  /*
+   * DRIVER ROW
+   */
   driverRow: {
-    minHeight: 48,
+    minHeight: 82,
 
-    flexDirection: "row",
-
-    alignItems: "center",
-
-    paddingVertical: 6,
+    paddingVertical: 7,
 
     borderBottomWidth: StyleSheet.hairlineWidth,
 
@@ -709,11 +973,19 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
 
+  driverTopRow: {
+    flexDirection: "row",
+
+    alignItems: "center",
+  },
+
   driverAvatar: {
     width: 32,
+
     height: 32,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 16,
@@ -721,6 +993,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.light,
 
     borderWidth: 1,
+
     borderColor: COLORS.border,
 
     marginRight: 8,
@@ -728,6 +1001,7 @@ const styles = StyleSheet.create({
 
   driverAvatarText: {
     fontSize: 11,
+
     fontWeight: "900",
 
     color: COLORS.primary,
@@ -743,6 +1017,7 @@ const styles = StyleSheet.create({
 
   driverName: {
     fontSize: 10,
+
     fontWeight: "700",
 
     color: COLORS.black,
@@ -758,6 +1033,7 @@ const styles = StyleSheet.create({
 
   workBadge: {
     paddingHorizontal: 6,
+
     paddingVertical: 3,
 
     borderRadius: 999,
@@ -773,6 +1049,7 @@ const styles = StyleSheet.create({
 
   workBadgeText: {
     fontSize: 7,
+
     fontWeight: "800",
   },
 
@@ -788,6 +1065,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
 
     paddingHorizontal: 5,
+
     paddingVertical: 3,
 
     borderRadius: 999,
@@ -797,15 +1075,75 @@ const styles = StyleSheet.create({
 
   inactiveAccountText: {
     fontSize: 7,
+
     fontWeight: "800",
 
     color: COLORS.error,
   },
 
+  /*
+   * DRIVER METRICS
+   *
+   * Today | Month | Start |
+   * Finish | Total
+   */
+  driverMetrics: {
+    flexDirection: "row",
+
+    marginTop: 7,
+
+    marginLeft: 5,
+
+    paddingTop: 6,
+
+    borderTopWidth: StyleSheet.hairlineWidth,
+
+    borderTopColor: COLORS.border,
+  },
+
+  driverMetric: {
+    flex: 1,
+
+    minWidth: 0,
+
+    alignItems: "center",
+    flexDirection: "row",
+
+    paddingHorizontal: 1,
+  },
+
+  driverMetricValue: {
+    fontSize: 12,
+
+    gap: 2,
+
+    fontWeight: "800",
+
+    color: COLORS.primary,
+
+    textAlign: "center",
+    marginLeft: 2,
+  },
+
+  driverMetricLabel: {
+    marginTop: 2,
+
+    fontSize: 8,
+
+    fontWeight: "600",
+
+    color: COLORS.muted,
+
+    textAlign: "center",
+  },
+
   emptyState: {
+    flex: 1,
+
     paddingVertical: 14,
 
     alignItems: "center",
+
     justifyContent: "center",
   },
 
@@ -817,37 +1155,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  viewAllButton: {
-    height: 29,
-
-    marginTop: 5,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    borderRadius: 8,
-
-    backgroundColor: COLORS.light,
-  },
-
-  viewAllButtonPressed: {
-    opacity: 0.7,
-  },
-
-  viewAllText: {
-    fontSize: 8,
-    fontWeight: "800",
-
-    color: COLORS.secondary,
-  },
-
   /*
    * QUICK ACTIONS
+   *
+   * This container is outside
+   * driver ScrollView, therefore
+   * it remains visible.
    */
+  quickActionsContainer: {
+    flexShrink: 0,
+    paddingBottom: 20,
+  },
+
   actionsTitle: {
     marginBottom: 6,
 
     fontSize: 11,
+
     fontWeight: "800",
 
     color: COLORS.primary,
@@ -869,6 +1193,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
 
     alignItems: "center",
+
     justifyContent: "center",
 
     borderRadius: 8,
@@ -882,10 +1207,18 @@ const styles = StyleSheet.create({
 
   actionText: {
     fontSize: 8,
+
     fontWeight: "800",
 
     color: COLORS.white,
 
     textAlign: "center",
+  },
+  driverAvatarImage: {
+    width: "100%",
+
+    height: "100%",
+
+    borderRadius: 16,
   },
 });
