@@ -4,6 +4,7 @@ import {
   type MyStatsResponse,
   type StatsPeriod,
   type SupervisorDashboardStatsResponse,
+  type SupervisorDriversDashboardResponse,
   type SupervisorRangeStatsResponse,
 } from "../types/stats";
 
@@ -38,6 +39,26 @@ export async function getSupervisorDashboardStats() {
   const response =
     await api.get<SupervisorDashboardStatsResponse>(
       "/stats/dashboard",
+    );
+
+  return response.data;
+}
+
+/**
+ * Get per-driver dashboard stats.
+ *
+ * Returns for every managed driver:
+ * - delivered today
+ * - delivered this month
+ * - first shift start today
+ * - last shift finish today
+ * - total worked time today
+ * - working now
+ */
+export async function getSupervisorDriversDashboard() {
+  const response =
+    await api.get<SupervisorDriversDashboardResponse>(
+      "/stats/drivers-dashboard",
     );
 
   return response.data;
