@@ -1,7 +1,4 @@
-export type OrderStatus =
-  | "picked_up"
-  | "delivered"
-  | "cancelled";
+export type OrderStatus = "picked_up" | "delivered" | "cancelled";
 
 export type OrderCancellationReason =
   | "customer_unavailable"
@@ -52,9 +49,7 @@ export interface Order {
 
   notes: string;
 
-  cancellationReason:
-    | OrderCancellationReason
-    | null;
+  cancellationReason: OrderCancellationReason | null;
 
   cancellationNotes: string;
 
@@ -82,8 +77,7 @@ export interface CompleteOrderDeliveryPayload {
 export interface CancelOrderPayload {
   orderId: string;
 
-  cancellationReason:
-    OrderCancellationReason;
+  cancellationReason: OrderCancellationReason;
 
   cancellationNotes?: string;
 
@@ -119,7 +113,6 @@ export interface DeleteOrderResponse {
 
   message: string;
 }
-
 
 export type SupervisorOrderStatusFilter =
   | "all"
@@ -171,4 +164,35 @@ export interface SupervisorOrdersResponse {
   };
 
   orders: Order[];
+}
+
+export interface SupervisorOrderCalendarDayStats {
+  total: number;
+
+  delivered: number;
+
+  cancelled: number;
+
+  active: number;
+}
+
+export interface SupervisorOrderCalendarResponse {
+  success: boolean;
+
+  timezone: string;
+
+  driverId: string;
+
+  month: string;
+
+  range: {
+    start: string;
+
+    end: string;
+  };
+
+
+  days: Record<string, number>;
+
+  dayStats: Record<string, SupervisorOrderCalendarDayStats>;
 }
