@@ -14,7 +14,8 @@
     "cancel": "Cancel",
     "save": "Save",
     "you": "You",
-    "name": "AL-MOUSSEL"
+    "name": "AL-MOUSSEL",
+    "edit": "Edit"
   },
 
   "stats": {
@@ -24,7 +25,7 @@
     "today": "Today",
     "week": "This Week",
     "month": "This Month",
-
+    "custom": "Custom",
     "orders": "Orders",
     "delivered": "Delivered",
     "workingTime": "Working Time",
@@ -83,7 +84,13 @@
     "quickActions": "Quick Actions",
 
     "allDrivers": "Drivers",
-    "liveMap": "Live Map"
+    "liveMap": "Live Map",
+    "deliveredToday":"Today",
+    "deliveredMonth":"Month",
+    "firstShift":"Start",
+    "lastShift":"Finish",
+    "totalTime":"Total"
+
   },
   "terms": {
     "title": "Terms & Conditions",
@@ -185,7 +192,13 @@
     "cancelVehicleIssue": "Vehicle issue",
     "cancelOrderIssue": "Order issue",
     "cancelEmergency": "Emergency",
-    "cancelOther": "Other"
+    "cancelOther": "Other",
+    "orders": "Orders",
+    "selectedDay": "Selected Day",
+    "selectedRange": "Selected Range",
+    "noOrdersSelectedDay":"No orders were found for this day",
+    "noOrdersSelectedRange":"No orders were found for this date range",
+    "driverHistoryCalendarHelp":"Tap a day to show only that day's orders. Tap another day to select a date range."
   },
 
   "shifts": {
@@ -225,7 +238,8 @@
     "title": "Profile",
     "supervisor": "Supervisor",
 
-    "password": "New Password"
+    "password": "New Password",
+    "vehicleType": "Vehicle Type"
   },
 
   "auth": {
@@ -287,7 +301,16 @@
     "activate": "Activate Driver",
 
     "callFailed": "Unable to open the phone app",
-    "whatsappFailed": "Unable to open WhatsApp"
+    "whatsappFailed": "Unable to open WhatsApp",
+    "profilePicture": "Profile Picture",
+    "editDriverDescription":"Update Driver Information",
+    "changeProfilePicture": "Tap the image to choose a new photo",
+    "editDriver": "Edit Driver",
+    "fullName": "Full Name",
+    "vehicleType": "Vehicle Type",
+    "bike": "Bike",
+    "car": "Car",
+    "walking": "Walking"
   },
 
   "location": {

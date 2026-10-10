@@ -738,18 +738,6 @@ export default function DriverDetailsScreen() {
 
               {!isSupervisorSelf && (
                 <View style={styles.driverActionsRow}>
-                  <Pressable
-                    onPress={openEditDriver}
-                    style={({ pressed }) => [
-                      styles.editDriverButton,
-                      pressed && styles.buttonPressed,
-                    ]}
-                  >
-                    <Pencil size={15} color={COLORS.primary} />
-                    <Text style={styles.editDriverButtonText}>
-                      {t("common.edit", "Edit")}
-                    </Text>
-                  </Pressable>
 
                   <Pressable
                     disabled={isUpdatingStatus}
@@ -773,6 +761,22 @@ export default function DriverDetailsScreen() {
                       </Text>
                     )}
                   </Pressable>
+
+
+                  <Pressable
+                    onPress={openEditDriver}
+                    style={({ pressed }) => [
+                      styles.editDriverButton,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Pencil size={15} color={COLORS.primary} />
+                    <Text style={styles.editDriverButtonText}>
+                      {t("common.edit", "Edit")}
+                    </Text>
+                  </Pressable>
+
+                  
                 </View>
               )}
             </View>
@@ -804,7 +808,7 @@ export default function DriverDetailsScreen() {
                     ["today", t("stats.today", "Today")],
                     ["week", t("stats.week", "Week")],
                     ["month", t("stats.month", "Month")],
-                    ["custom", t("common.custom", "Custom")],
+                    ["custom", t("stats.custom", "Custom")],
                   ] as const
                 ).map(([value, label]) => (
                   <Pressable
@@ -981,7 +985,7 @@ export default function DriverDetailsScreen() {
               ) : historyOrders.length === 0 ? (
                 <View style={styles.historyEmpty}>
                   <Text style={styles.historyEmptyTitle}>
-                    {t("orders.noHistory", "No orders found")}
+                    {t("orders.empty", "No orders found")}
                   </Text>
 
                   <Text style={styles.historyEmptyText}>
@@ -1089,7 +1093,7 @@ function DriverOrderHistoryCard({
         <View style={styles.historySummaryMain}>
           <Text style={styles.historyOrderTitle} numberOfLines={1}>
             {order.orderId
-              ? `Orderrrr #${order.orderId}`
+              ? `Order #${order.orderId}`
               : t("orders.order", "Order")}
           </Text>
           <View style={styles.timeRow}>
@@ -1539,7 +1543,7 @@ function EditDriverModal({
 
             <View style={styles.editField}>
               <Text style={styles.editFieldLabel}>
-                {t("drivers.vehicleType", "Vehicle Type")}
+                {t("profile.vehicleType", "Vehicle Type")}
               </Text>
 
               <View style={styles.vehicleOptions}>
