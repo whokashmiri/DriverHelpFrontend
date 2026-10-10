@@ -7,8 +7,9 @@ import {
   type DeleteOrderResponse,
   type OrderResponse,
   type OrdersResponse,
+  type SupervisorOrderCalendarResponse,
   type SupervisorOrdersQuery,
-  type SupervisorOrdersResponse
+  type SupervisorOrdersResponse,
 } from "../types/order";
 
 import { api, API_BASE_URL, getToken } from "./client";
@@ -217,6 +218,24 @@ export async function getSupervisorActiveOrders() {
   return response.data;
 }
 
+
+export async function getSupervisorOrderCalendar(
+  driverId: string,
+  month: string,
+) {
+  const response =
+    await api.get<SupervisorOrderCalendarResponse>(
+      "/orders/supervisor/calendar",
+      {
+        params: {
+          driverId,
+          month,
+        },
+      },
+    );
+
+  return response.data;
+}
 
 export async function getSupervisorOrders(
   params: SupervisorOrdersQuery = {},
