@@ -966,7 +966,7 @@ const styles = StyleSheet.create({
 
     borderBottomWidth: StyleSheet.hairlineWidth,
 
-    borderBottomColor: COLORS.border,
+    // borderBottomColor: COLORS.border,
   },
 
   driverRowPressed: {
