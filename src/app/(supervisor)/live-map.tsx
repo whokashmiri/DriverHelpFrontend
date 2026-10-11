@@ -62,6 +62,8 @@ export default function LiveMapScreen() {
   const { t } = useTranslation();
 
   const cameraRef = useRef<any>(null);
+  const hasInitialFitRef =
+  useRef(false);
 
   const { user } = useAuth();
 
@@ -135,11 +137,19 @@ export default function LiveMapScreen() {
     }
   }, [t, user?.id, user?.role, user?.canDeliverOrders]);
 
-  useFocusEffect(
-    useCallback(() => {
-      void loadLocations();
-    }, [loadLocations]),
-  );
+useFocusEffect(
+  useCallback(() => {
+    hasInitialFitRef.current =
+      false;
+
+    void loadLocations();
+
+    return () => {
+      hasInitialFitRef.current =
+        false;
+    };
+  }, [loadLocations]),
+);
   /*
    * LIVE SOCKET UPDATES
    */
@@ -241,66 +251,121 @@ export default function LiveMapScreen() {
   /*
    * FIT ON INITIAL LOAD / DATA
    */
-  useEffect(() => {
-    if (!mapReady || validLocations.length === 0) {
-      return;
-    }
 
-    const timeout = setTimeout(() => {
-      fitAllDrivers();
-    }, 300);
 
-    return () => clearTimeout(timeout);
-  }, [mapReady, validLocations.length]);
+const fitAllDrivers = useCallback(() => {
+  if (
+    !cameraRef.current ||
+    validLocations.length === 0
+  ) {
+    return;
+  }
 
-  const fitAllDrivers = useCallback(() => {
-    if (!cameraRef.current || validLocations.length === 0) {
-      return;
-    }
+  /*
+   * ONE DRIVER
+   */
+  if (validLocations.length === 1) {
+    const location =
+      validLocations[0];
 
-    if (validLocations.length === 1) {
-      const location = validLocations[0];
+    cameraRef.current.easeTo?.({
+      center: [
+        location.longitude,
+        location.latitude,
+      ],
 
-      cameraRef.current.easeTo?.({
-        center: [location.longitude, location.latitude],
+      zoom: 14,
 
-        zoom: 15,
+      duration: 600,
+    });
 
-        duration: 500,
-      });
+    return;
+  }
 
-      return;
-    }
+  /*
+   * FIND BOUNDS FOR ALL DRIVERS
+   */
+  let west =
+    validLocations[0].longitude;
 
-    let west = validLocations[0].longitude;
+  let east =
+    validLocations[0].longitude;
 
-    let east = validLocations[0].longitude;
+  let south =
+    validLocations[0].latitude;
 
-    let south = validLocations[0].latitude;
+  let north =
+    validLocations[0].latitude;
 
-    let north = validLocations[0].latitude;
-
-    for (const location of validLocations) {
-      west = Math.min(west, location.longitude);
-
-      east = Math.max(east, location.longitude);
-
-      south = Math.min(south, location.latitude);
-
-      north = Math.max(north, location.latitude);
-    }
-
-    cameraRef.current.fitBounds?.(
-      [west, south, east, north],
-      {
-        top: 70,
-        right: 45,
-        bottom: 120,
-        left: 45,
-      },
-      600,
+  for (const location of validLocations) {
+    west = Math.min(
+      west,
+      location.longitude,
     );
-  }, [validLocations]);
+
+    east = Math.max(
+      east,
+      location.longitude,
+    );
+
+    south = Math.min(
+      south,
+      location.latitude,
+    );
+
+    north = Math.max(
+      north,
+      location.latitude,
+    );
+  }
+
+  cameraRef.current.fitBounds?.(
+    [
+      west,
+      south,
+      east,
+      north,
+    ],
+    {
+      padding: {
+        top: 120,
+        right: 110,
+        bottom: 160,
+        left: 130,
+      },
+
+      duration: 700,
+    },
+  );
+}, [validLocations]);
+
+
+
+useEffect(() => {
+  if (
+    !mapReady ||
+    validLocations.length === 0 ||
+    hasInitialFitRef.current
+  ) {
+    return;
+  }
+
+  const timeout =
+    setTimeout(() => {
+      fitAllDrivers();
+
+      hasInitialFitRef.current =
+        true;
+    }, 700);
+
+  return () => {
+    clearTimeout(timeout);
+  };
+}, [
+  mapReady,
+  validLocations.length,
+  fitAllDrivers,
+]);
 
   const selectedLocation = useMemo(() => {
     if (!selectedDriverId) {
@@ -369,16 +434,15 @@ export default function LiveMapScreen() {
               onDidFinishLoadingMap={() => setMapReady(true)}
               onPress={() => setSelectedDriverId(null)}
             >
-              <Camera
-                ref={cameraRef}
-                initialViewState={{
-                  center: initialCenter,
-
-                  zoom: DEFAULT_ZOOM,
-                }}
-                minZoom={2}
-                maxZoom={19}
-              />
+            <Camera
+  ref={cameraRef}
+  initialViewState={{
+    center: initialCenter,
+    zoom: DEFAULT_ZOOM,
+  }}
+  minZoom={2}
+  maxZoom={19}
+/>
 
               {validLocations.map((location) => {
                 const driverId = getDriverId(location);
@@ -460,12 +524,14 @@ export default function LiveMapScreen() {
                               </Text>
                             </View>
 
+                          
+                          </View>
+
                             <VehicleBadge
                               vehicleType={driver?.vehicleType}
                               isWorking={isWorking}
                               compact
                             />
-                          </View>
                         </View>
                       </View>
 
@@ -497,18 +563,28 @@ export default function LiveMapScreen() {
             {/* SHOW ALL */}
 
             {validLocations.length > 0 && (
-              <Pressable
-                onPress={fitAllDrivers}
-                style={({ pressed }) => [
-                  styles.fitButton,
+            <Pressable
+  onPress={() =>
+    fitAllDrivers()
+  }
+  style={({ pressed }) => [
+    styles.fitButton,
 
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Text style={styles.fitButtonText}>
-                  {t("location.showAll", "Show All")}
-                </Text>
-              </Pressable>
+    pressed &&
+      styles.buttonPressed,
+  ]}
+>
+  <Text
+    style={
+      styles.fitButtonText
+    }
+  >
+    {t(
+      "location.showAll",
+      "Show All",
+    )}
+  </Text>
+</Pressable>
             )}
 
             {!!error && validLocations.length > 0 && (
