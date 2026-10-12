@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import * as Location from "expo-location";
 
 import {
   ActivityIndicator,
@@ -12,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { Bike, Camera, Car, PersonStanding, X } from "lucide-react-native";
+import { Bike, Camera, Car, PersonStanding, X, LocateFixed, MapPin } from "lucide-react-native";
 
 import * as ImagePicker from "expo-image-picker";
 
@@ -50,6 +51,43 @@ const COLORS = {
   successBackground: "#EAF7EE",
 };
 
+// Store six characters in English. Display supported Saudi plate letters in Arabic.
+const LATIN_PLATE = "ABJDRSXTEGKLZNHUV";
+const ARABIC_PLATE = ["أ", "ب", "ح", "د", "ر", "س", "ص", "ط", "ع", "ق", "ك", "ل", "م", "ن", "ه", "و", "ي"];
+const PLATE_TO_ENGLISH: Record<string, string> = {};
+for (let i = 0; i < LATIN_PLATE.length; i++) {
+  PLATE_TO_ENGLISH[ARABIC_PLATE[i]] = LATIN_PLATE[i];
+}
+Object.assign(PLATE_TO_ENGLISH, { "ا": "A", "إ": "A", "آ": "A", "هـ": "H" });
+
+function normalizePlate(value: string): string {
+  return Array.from(value.toUpperCase().replace(/[\s-]/g, "")).map((char) => {
+    const arabicDigit = "٠١٢٣٤٥٦٧٨٩".indexOf(char);
+    if (arabicDigit !== -1) return String(arabicDigit);
+    const persianDigit = "۰۱۲۳۴۵۶۷۸۹".indexOf(char);
+    if (persianDigit !== -1) return String(persianDigit);
+    return PLATE_TO_ENGLISH[char] ?? char;
+  }).join("");
+}
+
+function plateArabic(value: string): string {
+  return Array.from(normalizePlate(value)).map((char) => {
+    if (/^[0-9]$/.test(char)) return "٠١٢٣٤٥٦٧٨٩"[Number(char)];
+    const index = LATIN_PLATE.indexOf(char);
+    return index < 0 ? char : ARABIC_PLATE[index];
+  }).join(" ");
+}
+
+function locationAddress(parts: Location.LocationGeocodedAddress[]): string | null {
+  const address = parts[0];
+  if (!address) return null;
+  const values = [address.name, address.street, address.district,
+    address.subregion, address.city, address.region, address.country]
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  const unique = [...new Set(values.map((item) => item.trim()))];
+  return unique.length ? unique.join(", ") : null;
+}
+
 type DriverListRow = Omit<Driver, "role"> & {
   role: "driver" | "supervisor";
 
@@ -70,6 +108,10 @@ export default function DriversScreen() {
   const [iqamaId, setIqamaId] = useState("");
 
   const [phone, setPhone] = useState("");
+  const [vehiclePlateNumber, setVehiclePlateNumber] = useState("");
+  const [accommodationAddress, setAccommodationAddress] = useState("");
+  const [accommodationCoords, setAccommodationCoords] = useState<[number, number] | null>(null);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   const [password, setPassword] = useState("");
 
@@ -169,6 +211,41 @@ export default function DriversScreen() {
     }
   };
 
+  const useCurrentAccommodationLocation = async () => {
+    if (isCreating || isGettingLocation) return;
+    try {
+      setIsGettingLocation(true);
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          t("common.permissionRequired", "Permission Required"),
+          t("drivers.locationPermission", "Allow location access to select accommodation coordinates."),
+        );
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const { latitude, longitude } = position.coords;
+      setAccommodationCoords([longitude, latitude]);
+      try {
+        const geocoded = await Location.reverseGeocodeAsync({ latitude, longitude });
+        const address = locationAddress(geocoded);
+        if (address) setAccommodationAddress(address);
+        else Alert.alert(t("drivers.addressNotFound", "Address unavailable"),
+          t("drivers.enterAddress", "GPS saved. Please enter the address manually."));
+      } catch {
+        Alert.alert(t("drivers.addressNotFound", "Address unavailable"),
+          t("drivers.enterAddress", "GPS saved. Please enter the address manually."));
+      }
+    } catch (err) {
+      Alert.alert(t("common.error", "Error"),
+        getErrorMessage(err, t("drivers.locationFailed", "Unable to obtain current location")));
+    } finally {
+      setIsGettingLocation(false);
+    }
+  };
+
   /*
    * CREATE DRIVER
    */
@@ -180,6 +257,11 @@ export default function DriversScreen() {
     const cleanIqamaId = iqamaId.trim();
 
     const cleanPhone = phone.trim();
+    const cleanPlate = normalizePlate(vehiclePlateNumber);
+    if (cleanPlate && !/^[A-Z0-9]{6}$/.test(cleanPlate)) {
+      setError(t("drivers.invalidPlate", "Vehicle plate must contain exactly 6 English letters or digits."));
+      return;
+    }
 
     if (!cleanName || !cleanIqamaId || password.length < 6) {
       setError(
@@ -221,6 +303,15 @@ export default function DriversScreen() {
 
         vehicleType,
 
+        vehiclePlateNumber: cleanPlate || null,
+
+        accommodation: {
+          address: accommodationAddress.trim() || null,
+          location: accommodationCoords
+            ? { type: "Point", coordinates: accommodationCoords }
+            : null,
+        },
+
         profilePictureUri,
       });
 
@@ -231,6 +322,9 @@ export default function DriversScreen() {
       setIqamaId("");
 
       setPhone("");
+      setVehiclePlateNumber("");
+      setAccommodationAddress("");
+      setAccommodationCoords(null);
 
       setPassword("");
 
@@ -459,6 +553,69 @@ export default function DriversScreen() {
             onChange={setVehicleType}
             disabled={isCreating}
           />
+
+          {/* VEHICLE PLATE */}
+          <FormField
+            label={t("drivers.vehiclePlate", "Vehicle Plate Number")}
+            optional
+            value={vehiclePlateNumber}
+            onChangeText={(value) => setVehiclePlateNumber(normalizePlate(value).slice(0, 6))}
+            placeholder={t("drivers.platePlaceholder", "6 letters/digits")}
+            textAlign={textAlign}
+            editable={!isCreating}
+            maxLength={6}
+            autoCapitalize="characters"
+          />
+          {!!vehiclePlateNumber && (
+            <View style={styles.platePreview}>
+              <Text style={styles.platePreviewText}>EN: {normalizePlate(vehiclePlateNumber).split("").join(" ")}</Text>
+              <Text style={styles.platePreviewText}>AR: {plateArabic(vehiclePlateNumber)}</Text>
+            </View>
+          )}
+
+          {/* ACCOMMODATION */}
+          <FormField
+            label={t("drivers.accommodationAddress", "Accommodation Address")}
+            optional
+            value={accommodationAddress}
+            onChangeText={setAccommodationAddress}
+            placeholder={t("drivers.accommodationPlaceholder", "Neighborhood / street / building")}
+            textAlign={textAlign}
+            editable={!isCreating}
+          />
+          <View style={styles.accommodationControls}>
+            <Pressable
+              disabled={isCreating || isGettingLocation}
+              onPress={() => void useCurrentAccommodationLocation()}
+              style={[styles.locationButton, (isCreating || isGettingLocation) && styles.vehicleOptionDisabled]}
+            >
+              {isGettingLocation ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <LocateFixed size={14} color={COLORS.white} />
+              )}
+              <Text style={styles.locationButtonText}>
+                {t("drivers.useCurrentLocation", "Use My Current Location")}
+              </Text>
+            </Pressable>
+            {accommodationCoords && (
+              <Pressable
+                disabled={isCreating}
+                onPress={() => setAccommodationCoords(null)}
+                style={styles.locationClearButton}
+              >
+                <X size={15} color={COLORS.error} />
+              </Pressable>
+            )}
+          </View>
+          {accommodationCoords && (
+            <View style={styles.locationCoordinatesRow}>
+              <MapPin size={12} color={COLORS.secondary} />
+              <Text style={styles.locationCoordinates}>
+                {accommodationCoords[1].toFixed(6)}, {accommodationCoords[0].toFixed(6)} (lat, lng)
+              </Text>
+            </View>
+          )}
 
           {/* PASSWORD */}
 
@@ -756,7 +913,7 @@ function VehicleRadio({
         disabled && styles.vehicleOptionDisabled,
       ]}
     >
-      <Icon size={15} color={selected ? COLORS.white : COLORS.primary} />
+      <Icon size={13} color={selected ? COLORS.white : COLORS.primary} />
 
       <Text
         style={[
@@ -793,6 +950,8 @@ type FormFieldProps = {
   textAlign: "left" | "right" | "center";
 
   editable?: boolean;
+  maxLength?: number;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
 };
 
 function FormField({
@@ -805,6 +964,8 @@ function FormField({
   secureTextEntry = false,
   textAlign,
   editable = true,
+  maxLength,
+  autoCapitalize,
 }: FormFieldProps) {
   const { t } = useTranslation();
 
@@ -838,6 +999,8 @@ function FormField({
         secureTextEntry={secureTextEntry}
         autoCorrect={false}
         editable={editable}
+        maxLength={maxLength}
+        autoCapitalize={autoCapitalize ?? "sentences"}
         style={[
           styles.input,
           {
@@ -1142,6 +1305,56 @@ const styles = StyleSheet.create({
    * VEHICLE
    */
 
+  platePreview: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    paddingHorizontal: 5,
+  },
+  platePreviewText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: COLORS.secondary,
+  },
+  accommodationControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 5,
+  },
+  locationButton: {
+    flex: 1,
+    minHeight: 31,
+    borderRadius: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: COLORS.primary,
+  },
+  locationButtonText: {
+    color: COLORS.white,
+    fontSize: 9,
+    fontWeight: "700",
+  },
+  locationClearButton: {
+    width: 31,
+    height: 31,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 7,
+    backgroundColor: COLORS.errorBackground,
+  },
+  locationCoordinatesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 7,
+  },
+  locationCoordinates: {
+    color: COLORS.muted,
+    fontSize: 8,
+  },
   vehicleField: {
     marginBottom: 6,
   },
@@ -1165,7 +1378,7 @@ const styles = StyleSheet.create({
   vehicleOption: {
     flex: 1,
 
-    height: 34,
+    height: 27,
 
     flexDirection: "row",
 
@@ -1173,7 +1386,7 @@ const styles = StyleSheet.create({
 
     justifyContent: "center",
 
-    gap: 5,
+    gap: 4,
 
     borderWidth: 1,
 

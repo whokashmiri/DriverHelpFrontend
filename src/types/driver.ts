@@ -1,3 +1,4 @@
+
 export type DriverWorkStatus = "working" | "not_started";
 
 export type VehicleType = "car" | "bike";
@@ -5,6 +6,20 @@ export type VehicleType = "car" | "bike";
 export interface DriverProfilePicture {
   url: string | null;
   publicId: string | null;
+}
+
+/**
+ * GeoJSON coordinates are stored as:
+ * [longitude, latitude]
+ */
+export interface DriverAccommodationLocation {
+  type: "Point";
+  coordinates: [number, number];
+}
+
+export interface DriverAccommodation {
+  address?: string | null;
+  location?: DriverAccommodationLocation | null;
 }
 
 export interface Driver {
@@ -23,11 +38,18 @@ export interface Driver {
 
   vehicleType?: VehicleType | null;
 
+
+  vehiclePlateNumber?: string | null;
+
+  accommodation?: DriverAccommodation | null;
+
   role: "driver";
 
   isActive: boolean;
 
   supervisor?: string | null;
+
+  canDeliverOrders?: boolean;
 
   lastLoginAt?: string | null;
 
@@ -51,6 +73,10 @@ export interface CreateDriverPayload {
 
   vehicleType: VehicleType;
 
+  vehiclePlateNumber?: string | null;
+
+  accommodation?: DriverAccommodation | null;
+
   profilePictureUri?: string | null;
 }
 
@@ -66,6 +92,18 @@ export interface UpdateDriverPayload {
   password?: string;
 
   vehicleType?: VehicleType | null;
+
+  /**
+   * null or empty string clears the plate.
+   */
+  vehiclePlateNumber?: string | null;
+
+  /**
+   * undefined = do not update
+   * null = clear accommodation
+   * object = update provided accommodation fields
+   */
+  accommodation?: DriverAccommodation | null;
 
   profilePictureUri?: string | null;
 }

@@ -1,4 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   Bike,
@@ -9,20 +10,25 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  MapPin,
+  LocateFixed,
   MessageCircle,
   Pencil,
   PersonStanding,
   Phone,
   X,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,7 +57,49 @@ import type {
 import type { Order } from "../../types/order";
 import { getErrorMessage } from "../../utils";
 
+// Saudi plate conversion: the supported Latin symbols correspond to Saudi plate letters.
+// Preserve the six-character value in canonical Latin form in MongoDB.
+const PLATE_LATIN = ["A", "B", "J", "D", "R", "S", "X", "T", "E", "G", "K", "L", "Z", "N", "H", "U", "V"];
+const PLATE_ARABIC = ["أ", "ب", "ح", "د", "ر", "س", "ص", "ط", "ع", "ق", "ك", "ل", "م", "ن", "هـ", "و", "ي"];
+const LATIN_TO_ARABIC = Object.fromEntries(PLATE_LATIN.map((v, i) => [v, PLATE_ARABIC[i]]));
+const ARABIC_TO_LATIN = Object.fromEntries(PLATE_ARABIC.map((v, i) => [v, PLATE_LATIN[i]]));
+ARABIC_TO_LATIN["ا"] = "A";
+ARABIC_TO_LATIN["إ"] = "A";
+ARABIC_TO_LATIN["آ"] = "A";
+ARABIC_TO_LATIN["ه"] = "H";
+
+function canonicalPlate(value: string): string {
+  const text = value.toUpperCase().replace(/[\s\-]/g, "").replace(/هـ/g, "H");
+  return [...text].map(char => {
+    if (/[0-9]/.test(char)) return char;
+    const arabicDigit = "٠١٢٣٤٥٦٧٨٩".indexOf(char);
+    if (arabicDigit >= 0) return String(arabicDigit);
+    const persianDigit = "۰۱۲۳۴۵۶۷۸۹".indexOf(char);
+    if (persianDigit >= 0) return String(persianDigit);
+    return ARABIC_TO_LATIN[char] ?? char;
+  }).join("");
+}
+function isValidPlate(value: string): boolean {
+  return /^[A-Z0-9]{6}$/.test(value);
+}
+function arabicPlate(value: string): string {
+  return [...canonicalPlate(value)].map(ch => {
+    if (/[0-9]/.test(ch)) return "٠١٢٣٤٥٦٧٨٩"[Number(ch)];
+    return LATIN_TO_ARABIC[ch] ?? ch;
+  }).join(" ");
+}
+function englishPlate(value: string): string {
+  return [...canonicalPlate(value)].join(" ");
+}
+
+type AccommodationData = {
+  address?: string | null;
+  location?: { type: "Point"; coordinates: [number, number] } | null;
+} | null;
+
 type DriverDetailsUser = Omit<Driver, "role"> & {
+  vehiclePlateNumber?: string | null;
+  accommodation?: AccommodationData;
   role: "driver" | "supervisor";
   isSupervisorSelf?: boolean;
 };
@@ -171,6 +219,10 @@ export default function DriverDetailsScreen() {
   >(null);
   const [editIqamaId, setEditIqamaId] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editPlate, setEditPlate] = useState("");
+  const [editAccommodationAddress, setEditAccommodationAddress] = useState("");
+  const [editAccommodationCoords, setEditAccommodationCoords] = useState<[number, number] | null>(null);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [editPassword, setEditPassword] = useState("");
   const [isUpdatingDriver, setIsUpdatingDriver] = useState(false);
 
@@ -397,6 +449,14 @@ export default function DriverDetailsScreen() {
     setEditShortName(driver.shortName ?? "");
     setEditIqamaId(driver.iqamaId ?? "");
     setEditPhone(driver.phone ?? "");
+    setEditPlate(canonicalPlate(driver.vehiclePlateNumber ?? ""));
+    setEditAccommodationAddress(driver.accommodation?.address ?? "");
+    const coords = driver.accommodation?.location?.coordinates;
+    setEditAccommodationCoords(
+      Array.isArray(coords) && coords.length === 2 && coords.every(Number.isFinite)
+        ? [coords[0], coords[1]]
+        : null,
+    );
     setEditVehicleType(driver.vehicleType ?? null);
     setEditProfilePictureUri(null);
     setEditPassword("");
@@ -412,6 +472,64 @@ export default function DriverDetailsScreen() {
     setEditVisible(false);
   };
 
+  const useCurrentAccommodationLocation = async () => {
+    if (isGettingLocation || isUpdatingDriver) return;
+    try {
+      setIsGettingLocation(true);
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert(t("common.permissionRequired", "Permission Required"),
+          t("drivers.locationPermission", "Allow location access to use this phone's current position."));
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      setEditAccommodationCoords([
+        position.coords.longitude,
+        position.coords.latitude,
+      ]);
+
+      // Reverse geocode the captured coordinates into an editable address.
+      // GPS coordinates are retained even when reverse geocoding is unavailable.
+      try {
+        const addresses = await Location.reverseGeocodeAsync({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        const place = addresses[0];
+        if (place) {
+          const address = [
+            place.name,
+            place.streetNumber && place.street
+              ? `${place.streetNumber} ${place.street}`
+              : place.street,
+            place.district,
+            place.city,
+            place.region,
+            place.postalCode,
+            place.country,
+          ]
+            .filter((part): part is string => typeof part === "string" && !!part.trim())
+            .filter((part, index, parts) => parts.indexOf(part) === index)
+            .join(", ");
+          if (address) setEditAccommodationAddress(address);
+        }
+      } catch (geocodeError) {
+        console.warn("[DriverDetails] Reverse geocoding unavailable", geocodeError);
+        Alert.alert(
+          t("drivers.addressUnavailableTitle", "Address unavailable"),
+          t("drivers.addressUnavailable", "GPS saved in the form. Please enter the accommodation address manually."),
+        );
+      }
+    } catch (err) {
+      Alert.alert(t("common.error", "Error"),
+        getErrorMessage(err, t("drivers.locationFailed", "Unable to get current location")));
+    } finally {
+      setIsGettingLocation(false);
+    }
+  };
+
   const handleUpdateDriver = async () => {
     if (!driver || !driverId || isUpdatingDriver) {
       return;
@@ -421,7 +539,12 @@ export default function DriverDetailsScreen() {
     const shortName = editShortName.trim();
     const iqamaId = editIqamaId.trim();
     const phone = editPhone.trim();
-    const password = editPassword.trim();
+    const password = editPassword; // Do not change the real password by trimming.
+    const plate = canonicalPlate(editPlate);
+    if (plate && !isValidPlate(plate)) {
+      setError(t("drivers.plateLength", "Vehicle plate must contain exactly 6 English letters or digits (A-Z, 0-9)."));
+      return;
+    }
 
     if (!name) {
       setError(t("drivers.nameRequired", "Driver name is required"));
@@ -454,12 +577,19 @@ export default function DriverDetailsScreen() {
       setIsUpdatingDriver(true);
       setError(null);
 
-      const payload: UpdateDriverPayload = {
+      const payload: UpdateDriverPayload & { vehiclePlateNumber?: string | null; accommodation?: AccommodationData } = {
         name,
         shortName: shortName || null,
         iqamaId,
         phone: phone || null,
         vehicleType: editVehicleType,
+        vehiclePlateNumber: plate || null,
+        accommodation: {
+          address: editAccommodationAddress.trim() || null,
+          location: editAccommodationCoords
+            ? { type: "Point", coordinates: editAccommodationCoords }
+            : null,
+        },
         profilePictureUri: editProfilePictureUri,
       };
 
@@ -726,6 +856,33 @@ export default function DriverDetailsScreen() {
                   label={t("profile.iqama", "Iqama ID")}
                   value={driver.iqamaId}
                 />
+              </View>
+
+              <View style={styles.twoColumnRow}>
+                <InfoRow
+                  label={t("drivers.plateEnglish", "Plate (English)")}
+                  value={driver.vehiclePlateNumber ? englishPlate(driver.vehiclePlateNumber) : "-"}
+                />
+                <InfoRow
+                  label={t("drivers.plateArabic", "Plate (Arabic)")}
+                  value={driver.vehiclePlateNumber ? arabicPlate(driver.vehiclePlateNumber) : "-"}
+                />
+              </View>
+              <View style={styles.accommodationInfo}>
+                <MapPin size={15} color={COLORS.secondary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.infoLabel}>
+                    {t("drivers.accommodation", "Accommodation Location")}
+                  </Text>
+                  <Text style={styles.infoValue}>
+                    {driver.accommodation?.address || "-"}
+                  </Text>
+                  {driver.accommodation?.location?.coordinates?.length === 2 && (
+                    <Text style={styles.coordinateLabel}>
+                      {driver.accommodation.location.coordinates.map(n => n.toFixed(6)).join(", ")}
+                    </Text>
+                  )}
+                </View>
               </View>
 
               <PhoneRow
@@ -1036,12 +1193,18 @@ export default function DriverDetailsScreen() {
           </>
         ) : null}
 
+      </ScrollView>
+
         <EditDriverModal
           visible={editVisible}
           name={editName}
           shortName={editShortName}
           iqamaId={editIqamaId}
           phone={editPhone}
+          plate={editPlate}
+          accommodationAddress={editAccommodationAddress}
+          accommodationCoords={editAccommodationCoords}
+          gettingLocation={isGettingLocation}
           password={editPassword}
           vehicleType={editVehicleType}
           existingProfilePictureUrl={driver?.profilePicture?.url ?? null}
@@ -1051,14 +1214,16 @@ export default function DriverDetailsScreen() {
           onShortNameChange={setEditShortName}
           onIqamaChange={setEditIqamaId}
           onPhoneChange={setEditPhone}
+          onPlateChange={value => setEditPlate(canonicalPlate(value).slice(0, 6))}
+          onAccommodationAddressChange={setEditAccommodationAddress}
+          onUseCurrentLocation={() => void useCurrentAccommodationLocation()}
+          onClearLocation={() => setEditAccommodationCoords(null)}
           onPasswordChange={setEditPassword}
           onVehicleTypeChange={setEditVehicleType}
           onPickProfilePicture={() => void pickProfilePicture()}
           onClose={closeEditDriver}
           onSave={() => void handleUpdateDriver()}
         />
-      </ScrollView>
-
       <ImagePreviewModal
         uri={previewImage}
         onClose={() => setPreviewImage(null)}
@@ -1363,6 +1528,10 @@ function EditDriverModal({
   iqamaId,
 
   phone,
+  plate,
+  accommodationAddress,
+  accommodationCoords,
+  gettingLocation,
 
   password,
 
@@ -1381,6 +1550,10 @@ function EditDriverModal({
   onIqamaChange,
 
   onPhoneChange,
+  onPlateChange,
+  onAccommodationAddressChange,
+  onUseCurrentLocation,
+  onClearLocation,
 
   onPasswordChange,
 
@@ -1401,6 +1574,10 @@ function EditDriverModal({
   iqamaId: string;
 
   phone: string;
+  plate: string;
+  accommodationAddress: string;
+  accommodationCoords: [number, number] | null;
+  gettingLocation: boolean;
 
   password: string;
 
@@ -1419,6 +1596,10 @@ function EditDriverModal({
   onIqamaChange: (value: string) => void;
 
   onPhoneChange: (value: string) => void;
+  onPlateChange: (value: string) => void;
+  onAccommodationAddressChange: (value: string) => void;
+  onUseCurrentLocation: () => void;
+  onClearLocation: () => void;
 
   onPasswordChange: (value: string) => void;
 
@@ -1433,6 +1614,23 @@ function EditDriverModal({
   const { t } = useTranslation();
 
   const profileUri = selectedProfilePictureUri || existingProfilePictureUrl;
+  const scrollRef = useRef<ScrollView>(null);
+  const passwordFocused = useRef(false);
+  useEffect(() => {
+    if (!visible) passwordFocused.current = false;
+  }, [visible]);
+  useEffect(() => {
+    const listener = Keyboard.addListener("keyboardDidShow", () => {
+      if (passwordFocused.current) {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }
+    });
+    return () => listener.remove();
+  }, []);
+  const scrollToPassword = () => {
+    passwordFocused.current = true;
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
 
   return (
     <Modal
@@ -1441,7 +1639,11 @@ function EditDriverModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.editModalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.editModalOverlay}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+      >
         <View style={styles.editModalCard}>
           <View style={styles.editModalHeader}>
             <View
@@ -1472,8 +1674,12 @@ function EditDriverModal({
           </View>
 
           <ScrollView
+            ref={scrollRef}
+            style={{ flexShrink: 1 }}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 16 }}
           >
             {/* PROFILE PHOTO */}
 
@@ -1507,16 +1713,8 @@ function EditDriverModal({
               </Pressable>
 
               <View style={styles.editProfileText}>
-                <Text style={styles.editProfileTitle}>
-                  {t("drivers.profilePicture", "Profile Picture")}
-                </Text>
-
-                <Text style={styles.editProfileSubtitle}>
-                  {t(
-                    "drivers.changeProfilePicture",
-
-                    "Tap the image to choose a new photo",
-                  )}
+                <Text style={styles.editProfileTitle} numberOfLines={2}>
+                  {name || t("drivers.namePlaceholder", "Driver name")}
                 </Text>
               </View>
             </View>
@@ -1574,20 +1772,70 @@ function EditDriverModal({
             </View>
 
             <EditField
-              label={t("profile.iqama", "Iqama ID")}
-              value={iqamaId}
-              onChangeText={onIqamaChange}
-              placeholder={t("drivers.iqamaPlaceholder", "Iqama ID")}
-              keyboardType="number-pad"
+              label={t("drivers.vehiclePlate", "Vehicle Plate Number")}
+              value={plate}
+              onChangeText={onPlateChange}
+              placeholder={t("drivers.platePlaceholder", "6 characters (Arabic or English)")}
+              maxLength={6}
+              autoCapitalize="characters"
             />
+            {!!plate && (
+              <View style={styles.platePreview}>
+                <Text style={styles.platePreviewText}>EN: {englishPlate(plate)}</Text>
+                <Text style={styles.platePreviewText}>AR: {arabicPlate(plate)}</Text>
+              </View>
+            )}
 
             <EditField
-              label={t("profile.phone", "Phone")}
-              value={phone}
-              onChangeText={onPhoneChange}
-              placeholder={t("drivers.phonePlaceholder", "Phone number")}
-              keyboardType="phone-pad"
+              label={t("drivers.accommodationAddress", "Accommodation Address")}
+              value={accommodationAddress}
+              onChangeText={onAccommodationAddressChange}
+              placeholder={t("drivers.accommodationPlaceholder", "Neighborhood / building / address")}
             />
+            <View style={styles.editField}>
+              <Text style={styles.editFieldLabel}>{t("drivers.accommodationGPS", "Accommodation GPS")}</Text>
+              <View style={styles.locationControlRow}>
+                <Pressable
+                  disabled={loading || gettingLocation}
+                  onPress={onUseCurrentLocation}
+                  style={[styles.locationButton, (loading || gettingLocation) && styles.buttonDisabled]}
+                >
+                  {gettingLocation ? <ActivityIndicator color={COLORS.white} size="small" /> : <LocateFixed size={15} color={COLORS.white} />}
+                  <Text style={styles.locationButtonText}>{t("drivers.useCurrentLocation", "Use My Current Location")}</Text>
+                </Pressable>
+                {accommodationCoords && (
+                  <Pressable disabled={loading} onPress={onClearLocation} style={styles.clearLocationButton}>
+                    <X size={16} color={COLORS.error} />
+                  </Pressable>
+                )}
+              </View>
+              <Text style={styles.coordinateLabel}>
+                {accommodationCoords
+                  ? `${accommodationCoords[1].toFixed(6)}, ${accommodationCoords[0].toFixed(6)} (lat, lng)`
+                  : t("drivers.noGPS", "No GPS location selected")}
+              </Text>
+            </View>
+
+            <View style={styles.editTwoColumnRow}>
+              <View style={styles.editTwoColumnField}>
+                <EditField
+                  label={t("profile.iqama", "Iqama ID")}
+                  value={iqamaId}
+                  onChangeText={onIqamaChange}
+                  placeholder={t("drivers.iqamaPlaceholder", "Iqama ID")}
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={styles.editTwoColumnField}>
+                <EditField
+                  label={t("profile.phone", "Phone")}
+                  value={phone}
+                  onChangeText={onPhoneChange}
+                  placeholder={t("drivers.phonePlaceholder", "Phone number")}
+                  keyboardType="phone-pad"
+                />
+              </View>
+            </View>
 
             <EditField
               label={t("profile.password", "New Password")}
@@ -1599,6 +1847,8 @@ function EditDriverModal({
                 "Leave empty to keep current password",
               )}
               secureTextEntry
+              onFocus={scrollToPassword}
+              onBlur={() => { passwordFocused.current = false; }}
             />
           </ScrollView>
 
@@ -1638,7 +1888,7 @@ function EditDriverModal({
             </Pressable>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1678,7 +1928,7 @@ function VehicleOption({
         disabled && styles.buttonDisabled,
       ]}
     >
-      <Icon size={17} color={selected ? COLORS.white : COLORS.primary} />
+      <Icon size={15} color={selected ? COLORS.white : COLORS.primary} />
 
       <Text
         style={[
@@ -1729,6 +1979,10 @@ function EditField({
   keyboardType = "default",
 
   secureTextEntry = false,
+  maxLength,
+  autoCapitalize,
+  onFocus,
+  onBlur,
 }: {
   label: string;
 
@@ -1741,6 +1995,10 @@ function EditField({
   keyboardType?: "default" | "number-pad" | "phone-pad";
 
   secureTextEntry?: boolean;
+  maxLength?: number;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   const [passwordVisible, setPasswordVisible] = useState(false);
 
@@ -1757,8 +2015,11 @@ function EditField({
           placeholder={placeholder}
           placeholderTextColor={COLORS.muted}
           keyboardType={keyboardType}
+          maxLength={maxLength}
+          onFocus={onFocus}
+          onBlur={onBlur}
           secureTextEntry={secureTextEntry && !passwordVisible}
-          autoCapitalize={secureTextEntry ? "none" : "sentences"}
+          autoCapitalize={autoCapitalize ?? (secureTextEntry ? "none" : "sentences")}
           autoCorrect={false}
           style={[
             styles.editInput,
@@ -2588,7 +2849,8 @@ const styles = StyleSheet.create({
   // Existing edit modal
   editModalOverlay: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(10, 9, 12, 0.5)",
@@ -2596,8 +2858,8 @@ const styles = StyleSheet.create({
   editModalCard: {
     width: "100%",
     maxWidth: 420,
-    maxHeight: "90%",
-    padding: 14,
+    maxHeight: "88%",
+    padding: 11,
     borderRadius: 16,
     backgroundColor: COLORS.white,
   },
@@ -2623,6 +2885,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 9,
     backgroundColor: COLORS.light,
+  },
+  editTwoColumnRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  editTwoColumnField: {
+    flex: 1,
+    minWidth: 0,
   },
   editField: {
     marginBottom: 10,
@@ -2755,13 +3025,14 @@ const styles = StyleSheet.create({
   },
   vehicleOption: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 34,
+    paddingVertical: 4,
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
+    gap: 1,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 9,
+    borderRadius: 8,
     backgroundColor: COLORS.light,
   },
   vehicleOptionSelected: {
@@ -2769,11 +3040,64 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   vehicleOptionText: {
-    fontSize: 8,
+    fontSize: 7,
     fontWeight: "800",
     color: COLORS.primary,
   },
   vehicleOptionTextSelected: {
     color: COLORS.white,
+  },
+  accommodationInfo: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  coordinateLabel: {
+    fontSize: 9,
+    color: COLORS.muted,
+    marginTop: 5,
+  },
+  platePreview: {
+    paddingHorizontal: 10,
+    paddingBottom: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  platePreviewText: {
+    color: COLORS.primary,
+    fontWeight: "700",
+    fontSize: 10,
+  },
+  locationControlRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  locationButton: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+    backgroundColor: COLORS.primary,
+  },
+  locationButtonText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  clearLocationButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: COLORS.errorBackground,
   },
 });
