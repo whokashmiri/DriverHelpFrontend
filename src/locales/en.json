@@ -136,6 +136,7 @@
     "deactivateConfirmMessage": "Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
     "deactivate": "Deactivate Driver",
     "passwordOptional": "Leave empty to keep current password"
+   
   },
 
   "orders": {
@@ -310,7 +311,8 @@
     "vehicleType": "Vehicle Type",
     "bike": "Bike",
     "car": "Car",
-    "walking": "Walking"
+    "walking": "Walking",
+    "accommodation" :"Accommodation Location"
   },
 
   "location": {

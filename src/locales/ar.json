@@ -314,7 +314,8 @@
     "vehicleType": "نوع المركبة",
     "bike": "الدراجة",
     "car": "السيارة",
-    "walking": "السير"
+    "walking": "السير",
+   "accommodation": "موقع الإقامة"
   },
 
   "location": {
