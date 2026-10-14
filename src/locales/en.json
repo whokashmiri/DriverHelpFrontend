@@ -135,7 +135,8 @@
     "deactivateConfirmTitle": "Deactivate Driver?",
     "deactivateConfirmMessage": "Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
     "deactivate": "Deactivate Driver",
-    "passwordOptional": "Leave empty to keep current password"
+    "passwordOptional": "Leave empty to keep current password",
+    "plateEnglish": "Plate (English)"
    
   },
 
