@@ -316,7 +316,8 @@
     "car": "السيارة",
     "walking": "السير",
     "accommodation": "موقع الإقامة",
-    "plateEnglish": "رقم اللوحة (بالإنجليزية)"
+    "plateEnglish": "رقم اللوحة (بالإنجليزية)",
+    "plateArabic": "رقم اللوحة (بالعربية)"
   },
 
   "location": {

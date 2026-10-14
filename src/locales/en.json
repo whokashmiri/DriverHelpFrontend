@@ -85,12 +85,11 @@
 
     "allDrivers": "Drivers",
     "liveMap": "Live Map",
-    "deliveredToday":"Today",
-    "deliveredMonth":"Month",
-    "firstShift":"Start",
-    "lastShift":"Finish",
-    "totalTime":"Total"
-
+    "deliveredToday": "Today",
+    "deliveredMonth": "Month",
+    "firstShift": "Start",
+    "lastShift": "Finish",
+    "totalTime": "Total"
   },
   "terms": {
     "title": "Terms & Conditions",
@@ -136,8 +135,8 @@
     "deactivateConfirmMessage": "Are you sure you want to deactivate this driver? The driver will no longer be able to use the app until activated again.",
     "deactivate": "Deactivate Driver",
     "passwordOptional": "Leave empty to keep current password",
-    "plateEnglish": "Plate (English)"
-   
+    "plateEnglish": "Plate (English)",
+    "plateArabic": "Plate (Arabic)"
   },
 
   "orders": {
@@ -198,9 +197,9 @@
     "orders": "Orders",
     "selectedDay": "Selected Day",
     "selectedRange": "Selected Range",
-    "noOrdersSelectedDay":"No orders were found for this day",
-    "noOrdersSelectedRange":"No orders were found for this date range",
-    "driverHistoryCalendarHelp":"Tap a day to show only that day's orders. Tap another day to select a date range."
+    "noOrdersSelectedDay": "No orders were found for this day",
+    "noOrdersSelectedRange": "No orders were found for this date range",
+    "driverHistoryCalendarHelp": "Tap a day to show only that day's orders. Tap another day to select a date range."
   },
 
   "shifts": {
@@ -305,7 +304,7 @@
     "callFailed": "Unable to open the phone app",
     "whatsappFailed": "Unable to open WhatsApp",
     "profilePicture": "Profile Picture",
-    "editDriverDescription":"Update Driver Information",
+    "editDriverDescription": "Update Driver Information",
     "changeProfilePicture": "Tap the image to choose a new photo",
     "editDriver": "Edit Driver",
     "fullName": "Full Name",
@@ -313,7 +312,7 @@
     "bike": "Bike",
     "car": "Car",
     "walking": "Walking",
-    "accommodation" :"Accommodation Location"
+    "accommodation": "Accommodation Location"
   },
 
   "location": {
