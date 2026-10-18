@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Al-Moussel",
+    "name": "Drivo",
     "slug": "Tosh",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,7 +15,7 @@
     },
 
     "android": {
-      "package": "com.anonymous.Tosh",
+      "package": "com.drivo.mobileapp",
       "icon": "./assets/ic_launcher.png",
       "predictiveBackGestureEnabled": false
     },
@@ -40,8 +40,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow AL-Moussel to access your location while you are working.",
-          "locationAlwaysAndWhenInUsePermission": "Allow AL-Moussel to share your live location while your shift is active.",
+          "locationWhenInUsePermission": "Allow Drivo to access your location while you are working.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Drivo to share your live location while your shift is active.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
@@ -59,7 +59,7 @@
 
     "extra": {
       "eas": {
-        "projectId": "8f5c2ba2-2c70-4f14-8502-e017fa495333"
+        "projectId": "94655ac3-adb5-48e7-81d1-8c4047185f4a"
       }
     }
   }

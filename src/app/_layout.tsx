@@ -1,11 +1,12 @@
 import "../services/backgroundLocation";
 import { Stack } from "expo-router";
-
+import { useAppUpdates } from '../hooks/useAppUpdates';
 import { AuthProvider } from "@/context/AuthContext";
 import { AppModeProvider } from "@/context/AppModeContext";
 import { LanguageProvider } from "../context/LanguageContext";
 
 export default function RootLayout() {
+  useAppUpdates()
   return (
     <LanguageProvider>
       <AuthProvider>
