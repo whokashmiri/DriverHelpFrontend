@@ -112,7 +112,7 @@ export function AppHeader() {
     <>
       <View style={styles.container}>
         <View style={styles.brandContainer}>
-          <Text style={styles.brand}>{t("common.name", "Drivo")}</Text>
+          <Text style={styles.brand}>{t("common.name", "Spark Go")}</Text>
           <Text style={styles.version}>{version.build}</Text>
         </View>
         <View style={styles.actions}>
@@ -208,7 +208,7 @@ export function AppHeader() {
             onPress={() => {}}
           >
             <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>Drivo</Text>
+              <Text style={styles.menuTitle}>Spark Go</Text>
 
               <TouchableOpacity
                 onPress={closeMenu}

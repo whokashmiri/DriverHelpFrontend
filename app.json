@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Drivo",
+    "name": "Spark Go",
     "slug": "Tosh",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -40,8 +40,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Drivo to access your location while you are working.",
-          "locationAlwaysAndWhenInUsePermission": "Allow Drivo to share your live location while your shift is active.",
+          "locationWhenInUsePermission": "Allow Spark Go to access your location while you are working.",
+          "locationAlwaysAndWhenInUsePermission": "Allow Spark Go to share your live location while your shift is active.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true

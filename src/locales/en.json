@@ -14,7 +14,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "you": "You",
-    "name": "Drivo",
+    "name": "Spark Go",
     "edit": "Edit"
   },
 
@@ -96,7 +96,7 @@
     "lastUpdated": "Last updated: September 2026",
 
     "useTitle": "Use of the Application",
-    "useBody": "The Drivo application is provided for authorized drivers and supervisors to manage delivery operations, work shifts, orders, and related operational information.",
+    "useBody": "The Spark Go application is provided for authorized drivers and supervisors to manage delivery operations, work shifts, orders, and related operational information.",
 
     "locationTitle": "Location Information",
     "locationBody": "Driver location information may be collected during active work shifts to support operational monitoring, delivery management, and route history.",
