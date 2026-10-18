@@ -1,12 +1,11 @@
+
 {
   "expo": {
     "name": "Spark Go",
     "slug": "Tosh",
     "version": "1.0.0",
     "orientation": "portrait",
-
     "icon": "./assets/ic_launcher.png",
-
     "scheme": "tosh",
     "userInterfaceStyle": "automatic",
 
@@ -17,6 +16,10 @@
     "android": {
       "package": "com.drivo.mobileapp",
       "icon": "./assets/ic_launcher.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/ic_launcher_foreground.png",
+        "backgroundColor": "#208AEF"
+      },
       "predictiveBackGestureEnabled": false
     },
 
@@ -27,7 +30,6 @@
 
     "plugins": [
       "expo-router",
-
       [
         "expo-splash-screen",
         {
@@ -36,7 +38,6 @@
           "imageWidth": 220
         }
       ],
-
       [
         "expo-location",
         {
@@ -47,7 +48,6 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
-
       "expo-secure-store",
       "expo-localization"
     ],
