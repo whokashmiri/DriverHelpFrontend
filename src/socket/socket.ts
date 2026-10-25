@@ -25,6 +25,7 @@ export interface DriverLiveLocationPayload {
   speed?: number | null;
 
   heading?: number | null;
+  recordedAt?: string;
 }
 
 export interface DriverLiveLocationUpdate {
