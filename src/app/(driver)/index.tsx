@@ -132,12 +132,30 @@ export default function DriverHomeScreen() {
 
   const { language } = useLanguage();
 
-  const { isWorking, timer, startShift, endShift, isStarting, isEnding } =
-    useShift(language);
+  
+const {
+  isWorking,
+  isShiftReady,
+  timer,
+  startShift,
+  endShift,
+  isStarting,
+  isEnding,
+} = useShift(language);
 
-  useLocationTracking({
-    enabled: isWorking,
-  });
+const {
+  isTracking,
+  backgroundStatus,
+  permissionGranted,
+  backgroundPermissionGranted,
+  error: locationError,
+} = useLocationTracking({
+  enabled: isWorking,
+  ready: isShiftReady,
+  intervalMs: 3000,
+  distanceInterval: 3,
+});
+
 
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
 

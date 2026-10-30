@@ -1,3 +1,5 @@
+
+//(supervisor/live-map.tsx)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -23,7 +25,7 @@ import { AppScreen } from "../../components/AppScreen";
 
 import { getMyDriversLocations } from "../../api/locationApi";
 
-import { onDriverLocationUpdate } from "../../socket/socket";
+import { connectSocket, onDriverLocationUpdate } from "../../socket/socket";
 
 import { getActiveShift } from "../../api/shiftApi";
 import { useAuth } from "../../hooks/useAuth";
@@ -57,6 +59,27 @@ const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const DEFAULT_CENTER: [number, number] = [46.6753, 24.7136];
 
 const DEFAULT_ZOOM = 10;
+const LOCATION_FRESH_MS = 2 * 60 * 1000;
+
+function locationTime(value?: string | null): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function isLocationFresh(value: string | null | undefined, now: number) {
+  const time = locationTime(value);
+  return time !== null && time <= now + 30000 && now - time <= LOCATION_FRESH_MS;
+}
+
+function formatLocationAge(value: string | null | undefined, now: number) {
+  const time = locationTime(value);
+  if (time === null) return "Location time unavailable";
+  const seconds = Math.max(0, Math.floor((now - time) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return `${Math.floor(seconds / 3600)}h ago`;
+}
 
 export default function LiveMapScreen() {
   const { t } = useTranslation();
@@ -85,11 +108,19 @@ export default function LiveMapScreen() {
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
   const [mapReady, setMapReady] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const loadRequestRef = useRef(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   /*
    * INITIAL LOCATION LOAD
    */
   const loadLocations = useCallback(async () => {
+    const request = ++loadRequestRef.current;
     try {
       setError(null);
 
@@ -100,7 +131,25 @@ export default function LiveMapScreen() {
           getActiveShift(),
         ]);
 
-      setLocations(locationResponse?.locations ?? []);
+      if (request !== loadRequestRef.current) return;
+      // Never replace a newer Socket.IO fix with an older REST response.
+      setLocations((current) => {
+        const byDriver = new globalThis.Map<string, DriverLocation>();
+        for (const item of locationResponse?.locations ?? []) {
+          const id = getDriverId(item);
+          if (id) byDriver.set(id, item);
+        }
+        for (const item of current) {
+          const id = getDriverId(item);
+          if (!id) continue;
+          const existing = byDriver.get(id);
+          if (!existing || (locationTime(item.recordedAt) ?? 0) >
+              (locationTime(existing.recordedAt) ?? 0)) {
+            byDriver.set(id, item);
+          }
+        }
+        return [...byDriver.values()];
+      });
 
       const initialStatus: Record<string, boolean> = {};
 
@@ -124,8 +173,9 @@ export default function LiveMapScreen() {
         initialStatus[user.id] = Boolean(activeShiftResponse?.shift);
       }
 
-      setLiveWorkingStatus(initialStatus);
+      setLiveWorkingStatus((current) => ({ ...initialStatus, ...current }));
     } catch (err) {
+      if (request !== loadRequestRef.current) return;
       setError(
         getErrorMessage(
           err,
@@ -133,15 +183,14 @@ export default function LiveMapScreen() {
         ),
       );
     } finally {
-      setIsLoading(false);
+      if (request === loadRequestRef.current) setIsLoading(false);
     }
   }, [t, user?.id, user?.role, user?.canDeliverOrders]);
 
 useFocusEffect(
   useCallback(() => {
-    hasInitialFitRef.current =
-      false;
-
+    hasInitialFitRef.current = false;
+    setMapReady(false);
     void loadLocations();
 
     return () => {
@@ -151,63 +200,72 @@ useFocusEffect(
   }, [loadLocations]),
 );
   /*
-   * LIVE SOCKET UPDATES
+   * Connect and subscribe only while the supervisor screen is focused.
+   * HTTP background updates must be broadcast by the backend as
+   * driver:location:update for them to appear instantly here.
    */
-  useEffect(() => {
-    // console.log("[LiveMap] Registering driver location listener");
-
-    const cleanup = onDriverLocationUpdate(
-      (update: DriverLiveLocationUpdate) => {
-        setLiveWorkingStatus((current) => ({
-          ...current,
-
-          [update.driverId]: update.isWorking,
-        }));
+  useFocusEffect(
+    useCallback(() => {
+      let focused = true;
+      const cleanup = onDriverLocationUpdate((update: DriverLiveLocationUpdate) => {
+        if (!focused || !update.driverId) return;
+        if (
+          !Number.isFinite(update.latitude) ||
+          !Number.isFinite(update.longitude) ||
+          update.latitude < -90 || update.latitude > 90 ||
+          update.longitude < -180 || update.longitude > 180
+        ) return;
 
         setLocations((current) => {
           const index = current.findIndex(
             (item) => getDriverId(item) === update.driverId,
           );
-
           if (index === -1) {
-            console.warn("[LiveMap][State] Driver NOT FOUND:", update.driverId);
-
-            void loadLocations();
-
+            // Driver profile is not loaded yet; a refresh on focus will
+            // bring newly assigned drivers into the list.
             return current;
           }
 
           const previous = current[index];
+          const incomingTime = locationTime(update.recordedAt);
+          const previousTime = locationTime(previous.recordedAt);
+          if (incomingTime === null ||
+              (previousTime !== null && incomingTime <= previousTime)) {
+            return current;
+          }
 
           const next = [...current];
-
           next[index] = {
             ...previous,
-
             latitude: update.latitude,
-
             longitude: update.longitude,
-
             accuracy: update.accuracy,
-
             speed: update.speed,
-
             heading: update.heading,
-
             recordedAt: update.recordedAt,
           };
-
           return next;
         });
-      },
-    );
+        setLiveWorkingStatus((current) => ({
+          ...current,
+          [update.driverId]: update.isWorking,
+        }));
+      });
 
-    return () => {
-      console.log("[LiveMap] Removing driver location listener");
+      void connectSocket().catch((err) => {
+        if (focused) {
+          console.warn("[LiveMap] Socket connection failed:", err);
+          setError(getErrorMessage(err, "Live connection unavailable"));
+        }
+      });
 
-      cleanup();
-    };
-  }, [loadLocations]);
+      return () => {
+        focused = false;
+        cleanup();
+        // Do not disconnect the shared socket: other screens may use it.
+      };
+    }, [loadLocations]),
+  );
 
   /*
    * NORMALIZE GPS COORDINATES
@@ -253,93 +311,36 @@ useFocusEffect(
    */
 
 
-const fitAllDrivers = useCallback(() => {
-  if (
-    !cameraRef.current ||
-    validLocations.length === 0
-  ) {
-    return;
-  }
+ const fitAllDrivers = useCallback(() => {
+  if (!cameraRef.current || validLocations.length === 0) return;
 
-  /*
-   * ONE DRIVER
-   */
   if (validLocations.length === 1) {
-    const location =
-      validLocations[0];
-
+    const location = validLocations[0];
     cameraRef.current.easeTo?.({
-      center: [
-        location.longitude,
-        location.latitude,
-      ],
-
+      center: [location.longitude, location.latitude],
       zoom: 14,
-
       duration: 600,
     });
-
     return;
   }
 
-  /*
-   * FIND BOUNDS FOR ALL DRIVERS
-   */
-  let west =
-    validLocations[0].longitude;
-
-  let east =
-    validLocations[0].longitude;
-
-  let south =
-    validLocations[0].latitude;
-
-  let north =
-    validLocations[0].latitude;
-
+  let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
   for (const location of validLocations) {
-    west = Math.min(
-      west,
-      location.longitude,
-    );
-
-    east = Math.max(
-      east,
-      location.longitude,
-    );
-
-    south = Math.min(
-      south,
-      location.latitude,
-    );
-
-    north = Math.max(
-      north,
-      location.latitude,
-    );
+    west = Math.min(west, location.longitude);
+    east = Math.max(east, location.longitude);
+    south = Math.min(south, location.latitude);
+    north = Math.max(north, location.latitude);
   }
 
+  // MapLibre CameraRef.fitBounds expects [west, south, east, north].
   cameraRef.current.fitBounds?.(
-    [
-      west,
-      south,
-      east,
-      north,
-    ],
+    [west, south, east, north],
     {
-      padding: {
-        top: 120,
-        right: 110,
-        bottom: 160,
-        left: 130,
-      },
-
+      padding: { top: 100, right: 110, bottom: 150, left: 110 },
       duration: 700,
     },
   );
-}, [validLocations]);
-
-
+ }, [validLocations]);
 
 useEffect(() => {
   if (
@@ -454,6 +455,7 @@ useEffect(() => {
                 const driver = getDriver(location);
 
                 const selected = selectedDriverId === driverId;
+                const fresh = isLocationFresh(location.recordedAt, now);
 
                 const isWorking = getDriverWorkingStatus(
                   driverId,
@@ -480,7 +482,7 @@ useEffect(() => {
 
                           selected && styles.markerLabelSelected,
 
-                          !isWorking && styles.markerLabelInactive,
+                          (!isWorking || !fresh) && styles.markerLabelInactive,
                         ]}
                       >
                         {/* PHOTO / AVATAR */}
@@ -488,7 +490,7 @@ useEffect(() => {
                         <DriverAvatar
                           profilePictureUrl={driver?.profilePicture?.url}
                           size={34}
-                          isWorking={isWorking}
+                          isWorking={isWorking && fresh}
                         />
 
                         {/* NAME + PHONE */}
@@ -499,7 +501,7 @@ useEffect(() => {
                             style={[
                               styles.markerDriverName,
 
-                              !isWorking && styles.inactiveMainText,
+                              (!isWorking || !fresh) && styles.inactiveMainText,
                             ]}
                           >
                             {getDriverDisplayName(
@@ -623,6 +625,7 @@ useEffect(() => {
                   getDriver(selectedLocation),
                   liveWorkingStatus,
                 )}
+                now={now}
                 onClose={() => setSelectedDriverId(null)}
               />
             )}
@@ -645,11 +648,13 @@ useEffect(() => {
 function DriverLocationCard({
   location,
   isWorking,
+  now,
   onClose,
 }: {
   location: DriverLocation;
 
   isWorking: boolean;
+  now: number;
 
   onClose: () => void;
 }) {
@@ -658,6 +663,7 @@ function DriverLocationCard({
   const driver = getDriver(location);
 
   const driverId = getDriverId(location);
+  const fresh = isLocationFresh(location.recordedAt, now);
 
   return (
     <View style={styles.driverCard}>
@@ -665,7 +671,7 @@ function DriverLocationCard({
         <DriverAvatar
           profilePictureUrl={driver?.profilePicture?.url}
           size={40}
-          isWorking={isWorking}
+          isWorking={isWorking && fresh}
         />
 
         <View style={styles.driverInfo}>
@@ -696,7 +702,7 @@ function DriverLocationCard({
 
           <VehicleBadge
             vehicleType={driver?.vehicleType}
-            isWorking={isWorking}
+            isWorking={isWorking && fresh}
           />
         </View>
 
@@ -704,14 +710,14 @@ function DriverLocationCard({
           style={[
             styles.workingBadge,
 
-            isWorking ? styles.workingBadgeActive : styles.workingBadgeInactive,
+            isWorking && fresh ? styles.workingBadgeActive : styles.workingBadgeInactive,
           ]}
         >
           <View
             style={[
               styles.workingDot,
 
-              isWorking ? styles.workingDotActive : styles.workingDotInactive,
+              isWorking && fresh ? styles.workingDotActive : styles.workingDotInactive,
             ]}
           />
 
@@ -719,7 +725,7 @@ function DriverLocationCard({
             style={[
               styles.workingText,
 
-              isWorking ? styles.workingTextActive : styles.workingTextInactive,
+              isWorking && fresh ? styles.workingTextActive : styles.workingTextInactive,
             ]}
           >
             {isWorking
@@ -732,6 +738,10 @@ function DriverLocationCard({
           <Text style={styles.closeText}>×</Text>
         </Pressable>
       </View>
+
+      <Text style={[styles.locationAge, !fresh && styles.locationAgeStale]}>
+        {fresh ? "Live GPS" : "Stale GPS"} · {formatLocationAge(location.recordedAt, now)}
+      </Text>
 
       <View style={styles.locationRow}>
         <View style={styles.locationMetric}>
@@ -1549,6 +1559,15 @@ const styles = StyleSheet.create({
   /*
    * GPS CARD DETAILS
    */
+  locationAge: {
+    marginTop: 7,
+    fontSize: 10,
+    color: COLORS.success,
+    fontWeight: "700",
+  },
+  locationAgeStale: {
+    color: COLORS.error,
+  },
   locationRow: {
     minHeight: 43,
 
