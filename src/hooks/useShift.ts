@@ -1,123 +1,231 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-    endShift as endShiftApi,
-    getActiveShift,
-    startShift as startShiftApi,
+  endShift as endShiftApi,
+  getActiveShift,
+  startShift as startShiftApi,
 } from "../api";
 
 import type { DriverShift } from "../types/shift";
 
 import {
-    formatDuration,
-    formatDurationShort,
-    getElapsedSeconds,
-    getErrorMessage,
+  formatDuration,
+  formatDurationShort,
+  getElapsedSeconds,
+  getErrorMessage,
 } from "../utils";
+
+export type ShiftLoadStatus = "loading" | "ready" | "error";
 
 export function useShift(locale: "ar" | "en" = "ar") {
   const [activeShift, setActiveShift] = useState<DriverShift | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadStatus, setLoadStatus] =
+    useState<ShiftLoadStatus>("loading");
 
   const [isStarting, setIsStarting] = useState(false);
-
   const [isEnding, setIsEnding] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
-
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
+  /*
+   * Prevent stale API responses from overwriting
+   * newer shift data.
+   */
+  const requestVersionRef = useRef(0);
+
+  /*
+   * Synchronous lock prevents repeated taps
+   * before React updates isStarting/isEnding.
+   */
+  const operationRef = useRef<"start" | "end" | null>(null);
+
+  const mountedRef = useRef(false);
+
+  /*
+   * LOAD / REFRESH ACTIVE SHIFT
+   */
   const loadActiveShift = useCallback(async () => {
-    try {
+    const version = ++requestVersionRef.current;
+
+    if (mountedRef.current) {
+      setLoadStatus("loading");
       setError(null);
+    }
 
+    try {
       const response = await getActiveShift();
+      const shift = response.shift ?? null;
 
-      setActiveShift(response.shift);
-
-      if (response.shift) {
-        setElapsedSeconds(getElapsedSeconds(response.shift.startedAt));
-      } else {
-        setElapsedSeconds(0);
+      if (
+        mountedRef.current &&
+        version === requestVersionRef.current
+      ) {
+        setActiveShift(shift);
+        setElapsedSeconds(
+          shift ? getElapsedSeconds(shift.startedAt) : 0,
+        );
+        setLoadStatus("ready");
       }
 
-      return response.shift;
+      return shift;
     } catch (err) {
-      setError(getErrorMessage(err, "Unable to load active shift"));
+      if (
+        mountedRef.current &&
+        version === requestVersionRef.current
+      ) {
+        setError(
+          getErrorMessage(err, "Unable to load active shift"),
+        );
+
+        /*
+         * Unknown is not the same as inactive.
+         * Keep previous shift data and avoid
+         * triggering a background tracking stop.
+         */
+        setLoadStatus("error");
+      }
 
       throw err;
     }
   }, []);
 
+  /*
+   * INITIALIZE
+   */
   useEffect(() => {
-    const initialize = async () => {
-      try {
-        await loadActiveShift();
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    mountedRef.current = true;
 
-    void initialize();
+    /*
+     * loadActiveShift can reject, so handle it
+     * here to avoid an unhandled rejection.
+     */
+    void loadActiveShift().catch((err) => {
+      console.warn("[Shift] Initialization failed:", err);
+    });
+
+    return () => {
+      mountedRef.current = false;
+      ++requestVersionRef.current;
+    };
   }, [loadActiveShift]);
 
+  /*
+   * SHIFT TIMER
+   */
   useEffect(() => {
     if (!activeShift) {
       setElapsedSeconds(0);
-
       return;
     }
 
-    setElapsedSeconds(getElapsedSeconds(activeShift.startedAt));
+    const startedAt = activeShift.startedAt;
 
-    const interval = setInterval(() => {
-      setElapsedSeconds(getElapsedSeconds(activeShift.startedAt));
-    }, 1000);
+    const updateTimer = () => {
+      setElapsedSeconds(getElapsedSeconds(startedAt));
+    };
+
+    updateTimer();
+
+    const interval = setInterval(updateTimer, 1000);
 
     return () => {
       clearInterval(interval);
     };
-  }, [activeShift]);
+  }, [activeShift?.startedAt]);
 
+  /*
+   * START SHIFT
+   */
   const start = useCallback(async () => {
+    if (operationRef.current) {
+      throw new Error("Another shift operation is in progress");
+    }
+
+    operationRef.current = "start";
+
+    /*
+     * Invalidate pending GET responses.
+     */
+    const version = ++requestVersionRef.current;
+
     try {
       setIsStarting(true);
       setError(null);
 
       const response = await startShiftApi();
 
-      setActiveShift(response.shift);
-
-      setElapsedSeconds(getElapsedSeconds(response.shift.startedAt));
+      if (mountedRef.current && version === requestVersionRef.current) {
+        setActiveShift(response.shift);
+        setElapsedSeconds(
+          getElapsedSeconds(response.shift.startedAt),
+        );
+        setLoadStatus("ready");
+      }
 
       return response.shift;
     } catch (err) {
-      setError(getErrorMessage(err, "Unable to start shift"));
+      if (mountedRef.current) {
+        setError(
+          getErrorMessage(err, "Unable to start shift"),
+        );
+      }
 
       throw err;
     } finally {
-      setIsStarting(false);
+      operationRef.current = null;
+
+      if (mountedRef.current) {
+        setIsStarting(false);
+      }
     }
   }, []);
 
+  /*
+   * END SHIFT
+   */
   const end = useCallback(async () => {
+    if (operationRef.current) {
+      throw new Error("Another shift operation is in progress");
+    }
+
+    operationRef.current = "end";
+
+    const version = ++requestVersionRef.current;
+
     try {
       setIsEnding(true);
       setError(null);
 
       const response = await endShiftApi();
 
-      setActiveShift(null);
-      setElapsedSeconds(0);
+      /*
+       * Only stop tracking after the backend
+       * confirms the shift has ended.
+       */
+      if (mountedRef.current && version === requestVersionRef.current) {
+        setActiveShift(null);
+        setElapsedSeconds(0);
+        setLoadStatus("ready");
+      }
 
       return response.shift;
     } catch (err) {
-      setError(getErrorMessage(err, "Unable to end shift"));
+      if (mountedRef.current) {
+        setError(
+          getErrorMessage(err, "Unable to end shift"),
+        );
+      }
 
       throw err;
     } finally {
-      setIsEnding(false);
+      operationRef.current = null;
+
+      if (mountedRef.current) {
+        setIsEnding(false);
+      }
     }
   }, []);
 
@@ -136,19 +244,24 @@ export function useShift(locale: "ar" | "en" = "ar") {
 
     isWorking: Boolean(activeShift),
 
+    /*
+     * A confirmed shift state is required
+     * before stopping native tracking.
+     */
+    loadStatus,
+    isLoading: loadStatus === "loading",
+    isShiftReady: loadStatus === "ready",
+
     elapsedSeconds,
     formattedDuration,
     timer,
 
-    isLoading,
     isStarting,
     isEnding,
-
     error,
 
     startShift: start,
     endShift: end,
-
     refresh: loadActiveShift,
   };
 }
