@@ -339,5 +339,45 @@
 
     "loading": "جارٍ تحميل المواقع...",
     "unavailable": "الموقع غير متاح"
+  },
+
+
+  "forceUpdate": {
+    "brandName": "SPARK GO",
+    "updateFailed": "فشل التحديث",
+    "connectionRequired": "الاتصال مطلوب",
+    "restartingTitle": "جارٍ إعادة تشغيل Spark Go",
+    "downloadingTitle": "جارٍ تحديث Spark Go",
+    "updateTitle": "حان وقت التحديث!",
+
+    "otaErrorDescription": "تعذر تثبيت التحديث. تحقق من اتصالك بالإنترنت وحاول مرة أخرى.",
+    "connectionErrorDescription": "تعذر التحقق من إصدار التطبيق. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.",
+    "restartingDescription": "تم تنزيل التحديث بنجاح. جارٍ إعادة تشغيل التطبيق...",
+    "downloadingDescription": "يتوفر تحديث جديد. جارٍ تنزيل أحدث التحسينات...",
+    "updateDescription": "لقد أجرينا تحسينات على Spark Go. حدّث التطبيق للاستمتاع بأحدث الميزات ومواصلة العمل.",
+
+    "updateFailedBadge": "فشل التحديث",
+    "connectionIssueBadge": "مشكلة في الاتصال",
+    "frontendUpdateBadge": "تحديث التطبيق",
+    "newVersionBadge": "إصدار جديد متوفر",
+
+    "versionRequirement": "متطلبات الإصدار",
+    "installedVersion": "الإصدار المثبت لديك",
+    "minimumRequired": "الحد الأدنى المطلوب",
+    "build": "الإصدار {{version}}",
+
+    "openStoreError": "تعذر فتح متجر Google Play. يرجى فتحه يدويًا.",
+    "checkUpdateError": "تعذر التحقق من التحديثات.",
+
+    "updateApplication": "تحديث التطبيق",
+    "restartingApplication": "جارٍ إعادة تشغيل التطبيق...",
+    "downloadingUpdate": "جارٍ تنزيل التحديث...",
+    "retryUpdate": "إعادة محاولة التحديث",
+    "tryAgain": "حاول مرة أخرى",
+    "alreadyUpdated": "هل قمت بالتحديث بالفعل؟ تحقق مرة أخرى",
+
+    "footer": "عملك مهم. حافظ على تحديث Spark Go باستمرار.",
+    "bottomBranding": "SPARK GO · التحقق من الإصدار"
   }
+
 }

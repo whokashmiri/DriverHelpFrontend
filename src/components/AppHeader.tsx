@@ -18,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import version from "../../version.json";
+import * as Application from "expo-application";
 
 import { router } from "expo-router";
 
@@ -38,6 +38,9 @@ const COLORS = {
 export function AppHeader() {
   const { user } = useAuth();
   const { t } = useTranslation();
+
+  const appVersion = Application.nativeApplicationVersion ?? "1.0.0";
+const buildVersion = Application.nativeBuildVersion ?? "0";
 
   // console.log("[AppHeader] AUTH USER:", JSON.stringify(user, null, 2));
 
@@ -113,7 +116,9 @@ export function AppHeader() {
       <View style={styles.container}>
         <View style={styles.brandContainer}>
           <Text style={styles.brand}>{t("common.name", "Spark Go")}</Text>
-          <Text style={styles.version}>{version.build}</Text>
+           <Text style={styles.version}>
+    v{appVersion} ({buildVersion})
+  </Text>
         </View>
         <View style={styles.actions}>
           {canSwitchMode && (
@@ -311,9 +316,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.3,
   },
   version: {
-    fontSize: 5,
-    fontWeight: "600",
-  },
+  fontSize: 10,
+  fontWeight: "600",
+  color: COLORS.secondary,
+  alignSelf: "center",
+},
 
   actions: {
     flexDirection: "row",

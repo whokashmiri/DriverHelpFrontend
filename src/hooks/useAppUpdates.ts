@@ -1,63 +1,170 @@
 
-import { useEffect } from 'react';
-import { Alert } from 'react-native';
-import * as Updates from 'expo-updates';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import { AppState } from "react-native";
+import * as Updates from "expo-updates";
+
+type OTAState =
+  | "idle"
+  | "checking"
+  | "downloading"
+  | "restarting"
+  | "error";
+
+const MIN_CHECK_INTERVAL_MS = 60_000;
 
 export function useAppUpdates() {
+  const [status, setStatus] = useState<OTAState>("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const { isUpdatePending } = Updates.useUpdates();
+
+  const pendingRef = useRef(isUpdatePending);
+  const checkingRef = useRef(false);
+  const lastCheckRef = useRef(0);
+  const activeRef = useRef(false);
+  const updateDetectedRef = useRef(false);
+
   useEffect(() => {
-    if (__DEV__ || !Updates.isEnabled) {
-      return;
-    }
+    pendingRef.current = isUpdatePending;
+  }, [isUpdatePending]);
 
-    let isMounted = true;
+  const checkForUpdates = useCallback(
+    async (force = false) => {
+      if (__DEV__ || !Updates.isEnabled) {
+        return;
+      }
 
-    async function checkForUpdates() {
+      if (checkingRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (
+        !force &&
+        now - lastCheckRef.current < MIN_CHECK_INTERVAL_MS
+      ) {
+        return;
+      }
+
+      checkingRef.current = true;
+      lastCheckRef.current = now;
+
       try {
-        const result = await Updates.checkForUpdateAsync();
+        setErrorMessage("");
 
-        if (!isMounted || !result.isAvailable) {
+        // An update was already downloaded.
+        // Restart without downloading it again.
+        if (pendingRef.current) {
+          updateDetectedRef.current = true;
+          setStatus("restarting");
+
+          await Updates.reloadAsync();
           return;
         }
 
-        Alert.alert(
-          'Update available',
-          'A new version is ready. Update now for the latest improvements.',
-          [
-            {
-              text: 'Later',
-              style: 'cancel',
-            },
-            {
-              text: 'Update now',
-              onPress: () => {
-                void downloadAndApplyUpdate();
-              },
-            },
-          ],
-          { cancelable: true },
-        );
-      } catch (error) {
-        console.error('Failed to check for updates:', error);
-      }
-    }
+        // Check Expo for an available frontend update.
+        const result = await Updates.checkForUpdateAsync();
 
-    async function downloadAndApplyUpdate() {
-      try {
-        await Updates.fetchUpdateAsync();
-        await Updates.reloadAsync();
-      } catch (error) {
-        console.error('Failed to apply update:', error);
-        Alert.alert(
-          'Update failed',
-          'Please try again later.',
+        if (!activeRef.current) {
+          return;
+        }
+
+        if (!result.isAvailable) {
+          if (!updateDetectedRef.current) {
+            setStatus("idle");
+          }
+          return;
+        }
+
+        // A compatible OTA update is available.
+        updateDetectedRef.current = true;
+        setStatus("downloading");
+
+        // Download the update.
+        const downloaded = await Updates.fetchUpdateAsync();
+
+        if (!activeRef.current) {
+          return;
+        }
+
+        if (
+          downloaded.isNew ||
+          downloaded.isRollBackToEmbedded ||
+          pendingRef.current
+        ) {
+          setStatus("restarting");
+
+          await Updates.reloadAsync();
+          return;
+        }
+
+        throw new Error(
+          "The update could not be applied."
         );
+      } catch (error) {
+        console.error("[OTA] Update failed:", error);
+
+        if (!activeRef.current) {
+          return;
+        }
+
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to complete the update."
+        );
+
+        setStatus(
+          updateDetectedRef.current
+            ? "error"
+            : "idle"
+        );
+      } finally {
+        checkingRef.current = false;
       }
-    }
+    },
+    []
+  );
+
+  useEffect(() => {
+    activeRef.current = true;
 
     void checkForUpdates();
 
+    let previousState = AppState.currentState;
+
+    const subscription = AppState.addEventListener(
+      "change",
+      (nextState) => {
+        const returning =
+          (previousState === "background" ||
+            previousState === "inactive") &&
+          nextState === "active";
+
+        previousState = nextState;
+
+        if (returning) {
+          void checkForUpdates();
+        }
+      }
+    );
+
     return () => {
-      isMounted = false;
+      activeRef.current = false;
+      subscription.remove();
     };
-  }, []);
+  }, [checkForUpdates]);
+
+  return {
+    status,
+    errorMessage,
+    retry: () => checkForUpdates(true),
+  };
 }
