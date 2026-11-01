@@ -334,5 +334,48 @@
 
     "loading": "Loading locations...",
     "unavailable": "Location unavailable"
+  },
+
+
+
+  
+
+  "forceUpdate": {
+    "brandName": "SPARK GO",
+    "updateFailed": "Update Failed",
+    "connectionRequired": "Connection Required",
+    "restartingTitle": "Restarting Spark Go",
+    "downloadingTitle": "Updating Spark Go",
+    "updateTitle": "Time for an Update!",
+
+    "otaErrorDescription": "Unable to install the update. Check your connection and try again.",
+    "connectionErrorDescription": "We couldn't verify your app version. Please check your internet connection and try again.",
+    "restartingDescription": "Update downloaded successfully. Restarting the application...",
+    "downloadingDescription": "A new update is available. Downloading the latest improvements...",
+    "updateDescription": "We've made improvements to Spark Go. Update your app to enjoy the latest features and continue working.",
+
+    "updateFailedBadge": "UPDATE FAILED",
+    "connectionIssueBadge": "CONNECTION ISSUE",
+    "frontendUpdateBadge": "FRONTEND UPDATE",
+    "newVersionBadge": "NEW VERSION AVAILABLE",
+
+    "versionRequirement": "VERSION REQUIREMENT",
+    "installedVersion": "Your installed version",
+    "minimumRequired": "Minimum required",
+    "build": "Build {{version}}",
+
+    "openStoreError": "Unable to open Google Play. Please open it manually.",
+    "checkUpdateError": "Unable to check for updates.",
+
+    "updateApplication": "Update Application",
+    "restartingApplication": "Restarting Application...",
+    "downloadingUpdate": "Downloading Update...",
+    "retryUpdate": "Retry Update",
+    "tryAgain": "Try Again",
+    "alreadyUpdated": "Already Updated? Check Again",
+
+    "footer": "Your work matters. Keep Spark Go up to date.",
+    "bottomBranding": "SPARK GO · VERSION CHECK"
   }
+
 }
