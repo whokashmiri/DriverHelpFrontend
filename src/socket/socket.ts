@@ -1,3 +1,5 @@
+//socket/socket.ts
+
 import { io, Socket } from "socket.io-client";
 
 import { getToken } from "../api/client";
@@ -8,6 +10,16 @@ const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
  * Local development:
  */
 // const SOCKET_URL = "http://192.168.0.138:9000";
+
+import {
+  APP_PLATFORM,
+  ANDROID_VERSION_CODE,
+  PLAY_STORE_URL,
+} from "../services/appVersion";
+
+import {
+  notifyUpdateRequired,
+} from "../services/updateRequired";
 
 const LOCATION_ACK_TIMEOUT_MS = 8000;
 
@@ -91,9 +103,43 @@ function createSocket() {
     // console.log("[Socket] Connected:", socket?.id);
   });
 
-  socket.on("connect_error", (error) => {
-    // console.log("[Socket] Connect error:", error.message);
-  });
+socket.on("connect_error", (error) => {
+  const data = (
+    error as Error & {
+      data?: {
+        code?: string;
+        latestVersionCode?: number;
+        minimumVersionCode?: number;
+        storeUrl?: string;
+      };
+    }
+  ).data;
+
+  if (
+    data?.code === "APP_UPDATE_REQUIRED"
+  ) {
+    notifyUpdateRequired({
+      latestVersionCode:
+        data.latestVersionCode ?? 0,
+
+      minimumVersionCode:
+        data.minimumVersionCode ?? 0,
+
+      forceUpdate: true,
+
+      storeUrl:
+        data.storeUrl || PLAY_STORE_URL,
+    });
+
+    socket?.disconnect();
+    return;
+  }
+
+  console.error(
+    "[Socket] Connection error:",
+    error.message
+  );
+});
 
   socket.on("disconnect", (reason) => {
     // console.log("[Socket] Disconnected:", reason);
@@ -133,6 +179,13 @@ export async function connectSocket() {
 
     instance.auth = {
       token,
+        platform: APP_PLATFORM,
+  versionCode:
+    APP_PLATFORM === "android" &&
+    Number.isSafeInteger(ANDROID_VERSION_CODE) &&
+    ANDROID_VERSION_CODE > 0
+      ? ANDROID_VERSION_CODE
+      : undefined,
     };
 
     return new Promise<Socket>((resolve, reject) => {
@@ -257,121 +310,6 @@ export async function emitDriverLocation(
   });
 }
 
-//with logs
-// export async function emitDriverLocation(
-//   payload: DriverLiveLocationPayload,
-// ): Promise<LocationAcknowledgement> {
-//   /*
-//    * Mobile networks can switch between
-//    * Wi-Fi / cellular while tracking.
-//    */
-//   const instance = socket?.connected ? socket : await connectSocket();
-
-//   console.log("[Socket][Location] Emitting:", {
-//     socketId: instance.id,
-
-//     event: "driver:location",
-
-//     latitude: payload.latitude,
-
-//     longitude: payload.longitude,
-
-//     accuracy: payload.accuracy ?? null,
-
-//     speed: payload.speed ?? null,
-
-//     heading: payload.heading ?? null,
-
-//     sentAt: new Date().toISOString(),
-//   });
-
-//   return new Promise((resolve, reject) => {
-//     let finished = false;
-
-//     const timeout = setTimeout(
-//       () => {
-//         if (finished) {
-//           return;
-//         }
-
-//         finished = true;
-
-//         console.warn("[Socket][Location] ACK timeout:", {
-//           socketId: instance.id,
-
-//           latitude: payload.latitude,
-
-//           longitude: payload.longitude,
-//         });
-
-//         reject(new Error("Location acknowledgement timed out"));
-//       },
-
-//       LOCATION_ACK_TIMEOUT_MS,
-//     );
-
-//     instance.emit(
-//       "driver:location",
-
-//       payload,
-
-//       (response: LocationAcknowledgement) => {
-//         if (finished) {
-//           return;
-//         }
-
-//         finished = true;
-
-//         clearTimeout(timeout);
-
-//         console.log("[Socket][Location] ACK received:", {
-//           socketId: instance.id,
-
-//           response,
-//         });
-
-//         if (!response) {
-//           console.warn("[Socket][Location] Empty ACK");
-
-//           reject(new Error("No location acknowledgement received"));
-
-//           return;
-//         }
-
-//         if (!response.success) {
-//           console.warn("[Socket][Location] Server rejected location:", {
-//             message: response.message,
-
-//             latitude: payload.latitude,
-
-//             longitude: payload.longitude,
-//           });
-
-//           reject(new Error(response.message || "Unable to update location"));
-
-//           return;
-//         }
-
-//         console.log("[Socket][Location] Sent successfully:", {
-//           latitude: payload.latitude,
-
-//           longitude: payload.longitude,
-
-//           recordedAt: response.recordedAt,
-
-//           locationId: response.locationId,
-//         });
-
-//         resolve(response);
-//       },
-//     );
-//   });
-// }
-
-/*
- * SUPERVISOR:
- * LIVE LOCATION LISTENER
- */
 export function onDriverLocationUpdate(
   callback: (location: DriverLiveLocationUpdate) => void,
 ) {
