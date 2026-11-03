@@ -217,66 +217,126 @@ const {
 
   const [isOpeningCamera, setIsOpeningCamera] = useState(false);
 
-  const loadOrders = useCallback(async () => {
-    try {
-      setOrderError(null);
-      setIsLoadingOrder(true);
+  const recoverActiveOrder = useCallback(async () => {
+  try {
+    const response = await getActiveOrder();
+    const active = response.order;
 
-      const [activeResponse, ordersResponse] = await Promise.all([
-        getActiveOrder(),
-        getMyOrders(),
-      ]);
-
-      const active = activeResponse.order;
-
-      const orderList = ordersResponse.orders ?? [];
-
-      setActiveOrder(active);
-
-      setOrders(orderList);
-
-      if (active) {
-        setOrderNotes(active.notes ?? "");
-
-        if (active.pickupPhoto?.url) {
-          setPickupPhoto({
-            uri: active.pickupPhoto.url,
-
-            time: safeDate(active.pickupPhoto.takenAt || active.pickupTime),
-          });
-        }
-
-        if (active.deliveryPhoto?.url) {
-          setDeliveryPhoto({
-            uri: active.deliveryPhoto.url,
-
-            time: safeDate(active.deliveryPhoto.takenAt || active.deliveryTime),
-          });
-        } else {
-          setDeliveryPhoto(null);
-        }
-      } else {
-        setPickupPhoto(null);
-
-        setDeliveryPhoto(null);
-
-        setOrderNotes("");
-
-        setOrderElapsedSeconds(0);
-
-        setNotesExpanded(false);
-      }
-    } catch (error) {
-      setOrderError(
-        getErrorMessage(
-          error,
-          t("driver.activeOrderFailed", "Unable to load orders"),
-        ),
-      );
-    } finally {
-      setIsLoadingOrder(false);
+    if (!active?._id) {
+      return false;
     }
-  }, [t]);
+
+    setActiveOrder(active);
+
+    setPickupPhoto(
+      active.pickupPhoto?.url
+        ? {
+            uri: active.pickupPhoto.url,
+            time: safeDate(
+              active.pickupPhoto.takenAt ||
+              active.pickupTime,
+            ),
+          }
+        : null,
+    );
+
+    setDeliveryPhoto(null);
+    setOrderNotes(active.notes ?? "");
+
+    return true;
+  } catch (error) {
+    console.error(
+      "[ORDER] Failed to recover active order:",
+      error,
+    );
+
+    return false;
+  }
+}, []);
+
+
+const loadOrders = useCallback(async () => {
+  setIsLoadingOrder(true);
+
+  try {
+    // Load active order independently
+    const activeResponse = await getActiveOrder();
+    const active = activeResponse.order;
+
+    setActiveOrder(active);
+
+    if (active?._id) {
+      setOrderNotes(active.notes ?? "");
+
+      setPickupPhoto(
+        active.pickupPhoto?.url
+          ? {
+              uri: active.pickupPhoto.url,
+              time: safeDate(
+                active.pickupPhoto.takenAt ||
+                active.pickupTime,
+              ),
+            }
+          : null,
+      );
+
+      setDeliveryPhoto(
+        active.deliveryPhoto?.url
+          ? {
+              uri: active.deliveryPhoto.url,
+              time: safeDate(
+                active.deliveryPhoto.takenAt ||
+                active.deliveryTime,
+              ),
+            }
+          : null,
+      );
+
+      console.log(
+        "[ORDER] Active order loaded:",
+        active._id,
+      );
+    } else {
+      setPickupPhoto(null);
+      setDeliveryPhoto(null);
+      setOrderNotes("");
+      setOrderElapsedSeconds(0);
+      setNotesExpanded(false);
+    }
+
+    setOrderError(null);
+  } catch (error) {
+    console.error(
+      "[ORDER] Active order loading failed:",
+      error,
+    );
+
+    setOrderError(
+      getFriendlyOrderError(
+        error,
+        t(
+          "driver.activeOrderFailed",
+          "Unable to load active delivery",
+        ),
+      ),
+    );
+  }
+
+  try {
+    // Order history failure must not block delivery
+    const ordersResponse = await getMyOrders();
+
+    setOrders(ordersResponse.orders ?? []);
+  } catch (error) {
+    console.error(
+      "[ORDER] History loading failed:",
+      error,
+    );
+  } finally {
+    setIsLoadingOrder(false);
+  }
+}, [t]);
+
 
   const loadShifts = useCallback(async () => {
     try {
@@ -389,7 +449,7 @@ const {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes:  ["images"],
 
         allowsMultipleSelection: true,
 
@@ -513,36 +573,58 @@ const {
       /*
        * CAMERA PERMISSION
        */
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
 
-      if (!permission.granted) {
-        Alert.alert(
-          t("common.permissionRequired", "Permission Required"),
-          t(
-            "orders.cameraPermission",
-            "Camera permission is required to take delivery photos.",
-          ),
-        );
+/*
+ * CAMERA PERMISSION + LAUNCH
+ */
+const startedAt = performance.now();
 
-        return;
-      }
+let permission =
+  await ImagePicker.getCameraPermissionsAsync();
 
-      /*
-       * Give Android a short moment
-       * after the permission activity
-       * finishes before launching camera.
-       */
-      await new Promise((resolve) => setTimeout(resolve, 250));
+console.log(
+  `[CAMERA] Permission check: ${Math.round(
+    performance.now() - startedAt,
+  )}ms`,
+);
 
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+if (!permission.granted) {
+  permission =
+    await ImagePicker.requestCameraPermissionsAsync();
 
-        allowsEditing: false,
+  if (!permission.granted) {
+    Alert.alert(
+      t("common.permissionRequired", "Permission Required"),
+      t(
+        "orders.cameraPermission",
+        "Camera permission is required.",
+      ),
+    );
+    return;
+  }
 
-        quality: 0.8,
+  // Permission dialog may cause an Android activity transition.
+  // Only allow a brief stabilization delay in this case.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+}
 
-        cameraType: ImagePicker.CameraType.back,
-      });
+const launchStartedAt = performance.now();
+
+console.log(`[CAMERA] Launch requested: ${type}`);
+
+const result = await ImagePicker.launchCameraAsync({
+  mediaTypes: ["images"],
+  allowsEditing: false,
+  quality: 0.8,
+  cameraType: ImagePicker.CameraType.back,
+});
+
+console.log(
+  `[CAMERA] Camera returned after ${Math.round(
+    performance.now() - launchStartedAt,
+  )}ms`,
+);
+;
 
       if (result.canceled) {
         return;
@@ -675,35 +757,29 @@ const {
 
       setOrderElapsedSeconds(0);
     } catch (error) {
-      setPickupPhoto(null);
+  console.error("[PICKUP] Upload failed:", error);
 
-      const message = getFriendlyOrderError(
-        error,
-        t("orders.pickupUploadFailed", "Unable to save pickup photo"),
-      );
+  const recovered = await recoverActiveOrder();
 
-      const normalized = getErrorMessage(error, "").toLowerCase();
+  if (recovered) {
+    setOrderError(null);
+    return;
+  }
 
-      if (
-        normalized.includes("complete the current order") ||
-        normalized.includes("active order")
-      ) {
-        await loadOrders();
+  setPickupPhoto(null);
 
-        setOrderError(
-          t(
-            "orders.activeOrderRestored",
-            "Your active delivery has been restored.",
-          ),
-        );
-
-        return;
-      }
-
-      setOrderError(message);
-    } finally {
-      setUploadingPickup(false);
-    }
+  setOrderError(
+    getFriendlyOrderError(
+      error,
+      t(
+        "orders.pickupUploadFailed",
+        "Unable to save pickup photo",
+      ),
+    ),
+  );
+} finally {
+  setUploadingPickup(false);
+}
   };
 
   const processDeliveryInBackground = async (
@@ -1200,6 +1276,27 @@ function InlineOrderCreator({
 
   const isBusy = uploadingPickup || uploadingDelivery || isOpeningCamera;
 
+  
+useEffect(() => {
+  console.log("[DELIVERY BUTTON STATE]", {
+    activeOrderId: activeOrder?._id ?? null,
+    uploadingPickup,
+    uploadingDelivery,
+    isOpeningCamera,
+    disabled:
+      !activeOrder?._id ||
+      uploadingPickup ||
+      uploadingDelivery ||
+      isOpeningCamera,
+  });
+}, [
+  activeOrder?._id,
+  uploadingPickup,
+  uploadingDelivery,
+  isOpeningCamera,
+]);
+
+
   return (
     <View style={styles.inlineOrderCard}>
       <View style={styles.inlineOrderHeader}>
@@ -1274,7 +1371,12 @@ function InlineOrderCreator({
           title={t("orders.deliveryPhoto", "Delivery")}
           photo={deliveryPhoto}
           loading={uploadingDelivery}
-          disabled={!activeOrder || isBusy}
+          disabled={
+  !activeOrder?._id ||
+  uploadingPickup ||
+  uploadingDelivery ||
+  isOpeningCamera
+}
           onPress={onDelivery}
         />
       </View>
