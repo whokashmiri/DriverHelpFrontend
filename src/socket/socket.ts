@@ -65,6 +65,8 @@ export interface LocationAcknowledgement {
 
   recordedAt?: string;
 
+  accepted:boolean;
+
   locationId?: string;
 
   message?: string;
@@ -142,11 +144,11 @@ socket.on("connect_error", (error) => {
 });
 
   socket.on("disconnect", (reason) => {
-    // console.log("[Socket] Disconnected:", reason);
+    console.log("[Socket] Disconnected:", reason);
   });
 
   socket.io.on("reconnect", (attempt) => {
-    // console.log("[Socket] Reconnected:", attempt);
+    console.log("[Socket] Reconnected:", attempt);
   });
 
   return socket;
@@ -369,4 +371,10 @@ export function onSocketConnectError(callback: (error: Error) => void) {
   return () => {
     instance.off("connect_error", callback);
   };
+}
+
+export function pauseSocket() {
+  if (socket) {
+    socket.disconnect();
+  }
 }
