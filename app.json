@@ -30,6 +30,7 @@
 
     "plugins": [
       "expo-router",
+      "@maplibre/maplibre-react-native",
       [
         "expo-splash-screen",
         {
@@ -49,12 +50,21 @@
         }
       ],
       "expo-secure-store",
-      "expo-localization"
+      "expo-localization",
+      "@react-native-community/datetimepicker"
     ],
 
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+
+    "updates": {
+      "url": "https://u.expo.dev/94655ac3-adb5-48e7-81d1-8c4047185f4a"
     },
 
     "extra": {
