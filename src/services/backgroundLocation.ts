@@ -1,4 +1,4 @@
-
+//services/backgroundLocation.ts
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 
@@ -230,54 +230,42 @@ async function sendPendingLocations(): Promise<void> {
           }),
         });
 
-        if (!response.ok) {
-          console.warn(
-            "[BackgroundLocation] Server status:",
-            response.status,
-          );
 
-          /*
-           * Invalid / stale location:
-           * Remove only this rejected point.
-           */
-          if (
-            response.status === 400 ||
-            response.status === 409 ||
-            response.status === 422
-          ) {
-            pendingLocations.shift();
-            continue;
-          }
+if (!response.ok) {
+  const responseText = await response.text();
 
-          /*
-           * Authentication or shift permission failure.
-           *
-           * Stop retrying this queue.
-           * A new shift/task invocation can enqueue
-           * fresh GPS positions.
-           */
-          if (
-            response.status === 401 ||
-            response.status === 403
-          ) {
-            pendingLocations.length = 0;
-            break;
-          }
+  console.warn("[BackgroundLocation] HTTP error:", {
+    status: response.status,
+    message: responseText.slice(0, 500),
+    recordedAt: new Date(
+      location.timestamp,
+    ).toISOString(),
+  });
 
-          /*
-           * Temporary server failure.
-           * Retain the queue for the next task invocation.
-           */
-          break;
-        }
+  // Invalid or stale location
+  if (
+    response.status === 400 ||
+    response.status === 409 ||
+    response.status === 422
+  ) {
+    pendingLocations.shift();
+    continue;
+  }
 
-        /*
-         * Successful request.
-         *
-         * The backend may report accepted:false
-         * for a duplicate/stale coordinate.
-         * Both cases are terminal for this point.
-         */
+  // Authentication or permission failure
+  if (
+    response.status === 401 ||
+    response.status === 403
+  ) {
+    pendingLocations.length = 0;
+    break;
+  }
+
+  break;
+}
+
+
+    
         const result = await response.json().catch(
           () => null,
         );
@@ -361,6 +349,88 @@ TaskManager.defineTask<BackgroundLocationTaskData>(
 );
 
 /*
+ * PERMISSION HELPERS
+ *
+ * On Android, request*PermissionsAsync() launches a
+ * system activity even when the permission is already
+ * granted. That pauses our activity, so AppState
+ * reports "background" and then "active" again.
+ *
+ * Calling request on every foreground event therefore
+ * creates an endless background/foreground loop.
+ * Always check first and only prompt when needed.
+ */
+let permissionPromptDepth = 0;
+
+/*
+ * Ask for "Allow all the time" at most once per
+ * app session. Re-prompting automatically after a
+ * denial would reopen the dialog on every resume.
+ */
+let backgroundPermissionPrompted = false;
+
+export function isLocationPermissionPromptActive(): boolean {
+  return permissionPromptDepth > 0;
+}
+
+async function withPermissionPrompt<T>(
+  prompt: () => Promise<T>,
+): Promise<T> {
+  permissionPromptDepth += 1;
+
+  try {
+    return await prompt();
+  } finally {
+    permissionPromptDepth -= 1;
+  }
+}
+
+export async function ensureForegroundLocationPermission():
+  Promise<boolean> {
+  const current =
+    await Location.getForegroundPermissionsAsync();
+
+  if (current.granted) {
+    return true;
+  }
+
+  if (!current.canAskAgain) {
+    return false;
+  }
+
+  const result = await withPermissionPrompt(() =>
+    Location.requestForegroundPermissionsAsync(),
+  );
+
+  return result.granted;
+}
+
+export async function ensureBackgroundLocationPermission():
+  Promise<boolean> {
+  const current =
+    await Location.getBackgroundPermissionsAsync();
+
+  if (current.granted) {
+    return true;
+  }
+
+  if (
+    backgroundPermissionPrompted ||
+    !current.canAskAgain
+  ) {
+    return false;
+  }
+
+  backgroundPermissionPrompted = true;
+
+  const result = await withPermissionPrompt(() =>
+    Location.requestBackgroundPermissionsAsync(),
+  );
+
+  return result.granted;
+}
+
+/*
  * START BACKGROUND TRACKING
  */
 export async function startBackgroundLocationTracking():
@@ -375,19 +445,13 @@ export async function startBackgroundLocationTracking():
     return;
   }
 
-  const foregroundPermission =
-    await Location.requestForegroundPermissionsAsync();
-
-  if (!foregroundPermission.granted) {
+  if (!(await ensureForegroundLocationPermission())) {
     throw new Error(
       "Foreground location permission is required",
     );
   }
 
-  const backgroundPermission =
-    await Location.requestBackgroundPermissionsAsync();
-
-  if (!backgroundPermission.granted) {
+  if (!(await ensureBackgroundLocationPermission())) {
     throw new Error(
       "Background location permission is required",
     );
