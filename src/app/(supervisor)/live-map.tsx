@@ -25,7 +25,7 @@ import { AppScreen } from "../../components/AppScreen";
 
 import { getMyDriversLocations } from "../../api/locationApi";
 
-import { connectSocket, onDriverLocationUpdate } from "../../socket/socket";
+import { connectSocket, onDriverLocationUpdate , onSocketConnect } from "../../socket/socket";
 
 import { getActiveShift } from "../../api/shiftApi";
 import { useAuth } from "../../hooks/useAuth";
@@ -111,81 +111,182 @@ export default function LiveMapScreen() {
   const [now, setNow] = useState(Date.now());
   const loadRequestRef = useRef(0);
 
+  const locationsRef = useRef<DriverLocation[]>([]);
+const lastUnknownDriverRefreshRef = useRef(0);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+  locationsRef.current = locations;
+}, [locations]);
+
   /*
    * INITIAL LOCATION LOAD
    */
-  const loadLocations = useCallback(async () => {
-    const request = ++loadRequestRef.current;
-    try {
-      setError(null);
 
-      const [locationResponse, driversResponse, activeShiftResponse] =
-        await Promise.all([
-          getMyDriversLocations(),
-          getMyDrivers(),
-          getActiveShift(),
-        ]);
+const loadLocations = useCallback(async () => {
+  const request = ++loadRequestRef.current;
 
-      if (request !== loadRequestRef.current) return;
-      // Never replace a newer Socket.IO fix with an older REST response.
+  setError(null);
+  setIsLoading(true);
+
+  try {
+    const [
+      locationsResult,
+      driversResult,
+      shiftResult,
+    ] = await Promise.allSettled([
+      getMyDriversLocations(),
+      getMyDrivers(),
+      getActiveShift(),
+    ]);
+
+    if (request !== loadRequestRef.current) {
+      return;
+    }
+
+    // 1. LOAD GPS LOCATIONS
+    if (locationsResult.status === "fulfilled") {
+      const serverLocations =
+        locationsResult.value.locations ?? [];
+
+        for (const location of serverLocations) {
+  const timestamp = locationTime(
+    location.recordedAt,
+  );
+
+  console.log("[LiveMap] Driver GPS status:", {
+    driverId: getDriverId(location),
+    recordedAt: location.recordedAt,
+    ageSeconds:
+      timestamp === null
+        ? null
+        : Math.floor(
+            (Date.now() - timestamp) / 1000,
+          ),
+  });
+}
+
+      console.log("[LiveMap] GPS loaded:", {
+        count: serverLocations.length,
+        latestRecordedAt: serverLocations[0]?.recordedAt,
+      });
+
       setLocations((current) => {
-        const byDriver = new globalThis.Map<string, DriverLocation>();
-        for (const item of locationResponse?.locations ?? []) {
+        const byDriver =
+          new globalThis.Map<string, DriverLocation>();
+
+        // Authorized locations returned by backend.
+        for (const item of serverLocations) {
           const id = getDriverId(item);
           if (id) byDriver.set(id, item);
         }
+
+        // Preserve newer socket positions, but only
+        // for drivers returned by the server.
         for (const item of current) {
           const id = getDriverId(item);
           if (!id) continue;
-          const existing = byDriver.get(id);
-          if (!existing || (locationTime(item.recordedAt) ?? 0) >
-              (locationTime(existing.recordedAt) ?? 0)) {
+
+          const serverItem = byDriver.get(id);
+          if (!serverItem) continue;
+
+          const localTime =
+            locationTime(item.recordedAt) ?? 0;
+
+          const serverTime =
+            locationTime(serverItem.recordedAt) ?? 0;
+
+          if (localTime > serverTime) {
             byDriver.set(id, item);
           }
         }
+
         return [...byDriver.values()];
       });
+    } else {
+      console.error(
+        "[LiveMap] GPS API failed:",
+        locationsResult.reason,
+      );
 
-      const initialStatus: Record<string, boolean> = {};
-
-      /*
-       * Normal managed drivers.
-       */
-      for (const driver of driversResponse.drivers ?? []) {
-        const id = driver._id ?? driver.id;
-
-        if (!id) {
-          continue;
-        }
-
-        initialStatus[id] = driver.workStatus === "working";
-      }
-
-      /*
-       * Supervisor working as driver.
-       */
-      if (user?.role === "supervisor" && user.canDeliverOrders === true) {
-        initialStatus[user.id] = Boolean(activeShiftResponse?.shift);
-      }
-
-      setLiveWorkingStatus((current) => ({ ...initialStatus, ...current }));
-    } catch (err) {
-      if (request !== loadRequestRef.current) return;
       setError(
         getErrorMessage(
-          err,
-          t("location.loadFailed", "Unable to load driver locations"),
+          locationsResult.reason,
+          "Unable to refresh driver locations",
         ),
       );
-    } finally {
-      if (request === loadRequestRef.current) setIsLoading(false);
     }
-  }, [t, user?.id, user?.role, user?.canDeliverOrders]);
+
+    // 2. LOAD DRIVER WORKING STATUS
+    if (driversResult.status === "fulfilled") {
+      const statuses: Record<string, boolean> = {};
+
+      for (
+        const driver of
+        driversResult.value.drivers ?? []
+      ) {
+        const id = driver._id ?? driver.id;
+
+        if (id) {
+          statuses[id] =
+            driver.workStatus === "working";
+        }
+      }
+
+      setLiveWorkingStatus((current) => ({
+        ...current,
+        ...statuses,
+      }));
+    } else {
+      console.warn(
+        "[LiveMap] Driver status API failed:",
+        driversResult.reason,
+      );
+    }
+
+    // 3. SUPERVISOR WORKING AS DRIVER
+    if (
+      user?.role === "supervisor" &&
+      user.canDeliverOrders === true &&
+      shiftResult.status === "fulfilled"
+    ) {
+      const supervisorId = user.id;
+
+      if (supervisorId) {
+        setLiveWorkingStatus((current) => ({
+          ...current,
+          [supervisorId]: Boolean(
+            shiftResult.value?.shift,
+          ),
+        }));
+      }
+    }
+  } catch (err) {
+    console.error(
+      "[LiveMap] Unexpected loading error:",
+      err,
+    );
+
+    setError(
+      getErrorMessage(
+        err,
+        "Unable to load driver locations",
+      ),
+    );
+  } finally {
+    if (request === loadRequestRef.current) {
+      setIsLoading(false);
+    }
+  }
+}, [
+  user?.id,
+  user?.role,
+  user?.canDeliverOrders,
+]);
 
 useFocusEffect(
   useCallback(() => {
@@ -204,68 +305,164 @@ useFocusEffect(
    * HTTP background updates must be broadcast by the backend as
    * driver:location:update for them to appear instantly here.
    */
-  useFocusEffect(
-    useCallback(() => {
-      let focused = true;
-      const cleanup = onDriverLocationUpdate((update: DriverLiveLocationUpdate) => {
-        if (!focused || !update.driverId) return;
-        if (
-          !Number.isFinite(update.latitude) ||
-          !Number.isFinite(update.longitude) ||
-          update.latitude < -90 || update.latitude > 90 ||
-          update.longitude < -180 || update.longitude > 180
-        ) return;
 
-        setLocations((current) => {
-          const index = current.findIndex(
-            (item) => getDriverId(item) === update.driverId,
-          );
-          if (index === -1) {
-            // Driver profile is not loaded yet; a refresh on focus will
-            // bring newly assigned drivers into the list.
-            return current;
+useFocusEffect(
+  useCallback(() => {
+    let focused = true;
+
+    // Refresh server locations if an unknown
+    // driver begins transmitting GPS updates.
+    const refreshUnknownDriver = () => {
+      const currentTime = Date.now();
+
+      if (
+        currentTime -
+          lastUnknownDriverRefreshRef.current <
+        10000
+      ) {
+        return;
+      }
+
+      lastUnknownDriverRefreshRef.current =
+        currentTime;
+
+      void loadLocations();
+    };
+
+    // RECEIVE LIVE GPS UPDATES
+    const removeLocationListener =
+      onDriverLocationUpdate(
+        (update: DriverLiveLocationUpdate) => {
+          if (!focused || !update.driverId) {
+            return;
           }
 
-          const previous = current[index];
-          const incomingTime = locationTime(update.recordedAt);
-          const previousTime = locationTime(previous.recordedAt);
-          if (incomingTime === null ||
-              (previousTime !== null && incomingTime <= previousTime)) {
-            return current;
+          if (
+            !Number.isFinite(update.latitude) ||
+            !Number.isFinite(update.longitude) ||
+            update.latitude < -90 ||
+            update.latitude > 90 ||
+            update.longitude < -180 ||
+            update.longitude > 180
+          ) {
+            return;
           }
 
-          const next = [...current];
-          next[index] = {
-            ...previous,
-            latitude: update.latitude,
-            longitude: update.longitude,
-            accuracy: update.accuracy,
-            speed: update.speed,
-            heading: update.heading,
+          const incomingTime =
+            locationTime(update.recordedAt);
+
+          if (incomingTime === null) {
+            return;
+          }
+
+          console.log("[LiveMap] GPS received:", {
+            driverId: update.driverId,
             recordedAt: update.recordedAt,
-          };
-          return next;
-        });
-        setLiveWorkingStatus((current) => ({
-          ...current,
-          [update.driverId]: update.isWorking,
-        }));
+            ageSeconds: Math.floor(
+              (Date.now() - incomingTime) / 1000,
+            ),
+          });
+
+          const knownDriver =
+            locationsRef.current.some(
+              (item) =>
+                getDriverId(item) === update.driverId,
+            );
+
+          if (!knownDriver) {
+            console.warn(
+              "[LiveMap] New driver location received",
+              update.driverId,
+            );
+
+            refreshUnknownDriver();
+            return;
+          }
+
+          // Update only if timestamp is newer.
+          setLocations((current) => {
+            const index = current.findIndex(
+              (item) =>
+                getDriverId(item) === update.driverId,
+            );
+
+            if (index === -1) {
+              return current;
+            }
+
+            const previous = current[index];
+
+            const previousTime =
+              locationTime(previous.recordedAt);
+
+            if (
+              previousTime !== null &&
+              incomingTime <= previousTime
+            ) {
+              return current;
+            }
+
+            const next = [...current];
+
+            next[index] = {
+              ...previous,
+              latitude: update.latitude,
+              longitude: update.longitude,
+              accuracy: update.accuracy,
+              speed: update.speed,
+              heading: update.heading,
+              recordedAt: update.recordedAt,
+            };
+
+            return next;
+          });
+
+          setLiveWorkingStatus((current) => ({
+            ...current,
+            [update.driverId]: update.isWorking,
+          }));
+        },
+      );
+
+    // Called on initial connection
+    // and after Socket.IO reconnects.
+    const removeConnectListener =
+      onSocketConnect(() => {
+        if (!focused) return;
+
+        console.log(
+          "[LiveMap] Socket connected; syncing GPS",
+        );
+
+        void loadLocations();
       });
 
-      void connectSocket().catch((err) => {
-        if (focused) {
-          console.warn("[LiveMap] Socket connection failed:", err);
-          setError(getErrorMessage(err, "Live connection unavailable"));
-        }
-      });
+    void connectSocket().catch((err) => {
+      if (!focused) return;
 
-      return () => {
-        focused = false;
-        cleanup();
-        // Do not disconnect the shared socket: other screens may use it.
-      };
-    }, [loadLocations]),
-  );
+      console.error(
+        "[LiveMap] Socket connection failed:",
+        err,
+      );
+
+      setError(
+        getErrorMessage(
+          err,
+          "Live connection unavailable",
+        ),
+      );
+    });
+
+    return () => {
+      focused = false;
+
+      removeLocationListener();
+      removeConnectListener();
+
+      // Shared socket: do not disconnect here.
+    };
+  }, [loadLocations]),
+);
 
   /*
    * NORMALIZE GPS COORDINATES
@@ -729,8 +926,8 @@ function DriverLocationCard({
             ]}
           >
             {isWorking
-              ? t("drivers.working", "Working")
-              : t("drivers.notWorking", "Offline")}
+  ? t("drivers.working", "Working")
+  : t("drivers.notWorking", "Not Working")}
           </Text>
         </View>
 
