@@ -1,4 +1,6 @@
 
+//hooks/useLocationTracking.ts
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppState } from "react-native";
@@ -8,9 +10,12 @@ import {
   connectSocket,
   emitDriverLocation,
   isSocketConnected,
+  pauseSocket
 } from "../socket/socket";
 
 import {
+  ensureForegroundLocationPermission,
+  isLocationPermissionPromptActive,
   isBackgroundLocationTracking,
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
@@ -21,10 +26,7 @@ import { getErrorMessage } from "../utils";
 type UseLocationTrackingOptions = {
   enabled: boolean;
 
-  /*
-   * False while the active shift is loading
-   * or its status cannot be verified.
-   */
+  
   ready?: boolean;
 
   intervalMs?: number;
@@ -37,12 +39,6 @@ type BackgroundTrackingStatus =
   | "active"
   | "unavailable";
 
-/*
- * Serialize native background start/stop requests.
- *
- * This prevents an async start and an async stop
- * from executing simultaneously.
- */
 let backgroundOperationQueue: Promise<void> = Promise.resolve();
 
 function queueBackgroundOperation(
@@ -84,35 +80,25 @@ export function useLocationTracking({
 
   const sendingRef = useRef(false);
 
-  /*
-   * Generation changes whenever foreground
-   * tracking is cancelled.
-   */
+
   const generationRef = useRef(0);
 
-  /*
-   * Avoid duplicate start attempts for
-   * the same generation.
-   */
+
   const startingGenerationRef = useRef<number | null>(null);
 
   const mountedRef = useRef(false);
 
   const activeRef = useRef(false);
 
-  /*
-   * Keep latest flags accessible to async callbacks.
-   */
+
   activeRef.current = enabled && ready;
 
-  /*
-   * FOREGROUND SOCKET LOCATION
-   */
   const sendLocation = useCallback(
     async (location: Location.LocationObject) => {
       if (
         !mountedRef.current ||
         !activeRef.current ||
+        AppState.currentState !== "active" ||
         sendingRef.current
       ) {
         return;
@@ -130,16 +116,31 @@ export function useLocationTracking({
         }
 
         
-await emitDriverLocation({
-  latitude: location.coords.latitude,
-  longitude: location.coords.longitude,
+console.log("[GPS] Received:", {
+  recordedAt: new Date(
+    location.timestamp,
+  ).toISOString(),
+  ageSeconds: Math.round(
+    (Date.now() - location.timestamp) / 1000,
+  ),
+});
 
-  accuracy: location.coords.accuracy,
-  speed: location.coords.speed,
-  heading: location.coords.heading,
+const acknowledgement =
+  await emitDriverLocation({
+    latitude: location.coords.latitude,
+    longitude: location.coords.longitude,
+    accuracy: location.coords.accuracy,
+    speed: location.coords.speed,
+    heading: location.coords.heading,
+    recordedAt: new Date(
+      location.timestamp,
+    ).toISOString(),
+  });
 
-  // Original GPS acquisition time.
-  recordedAt: new Date(location.timestamp).toISOString(),
+console.log("[GPS] Socket ACK:", {
+  success: acknowledgement.success,
+  accepted: acknowledgement.accepted,
+  recordedAt: acknowledgement.recordedAt,
 });
 
 
@@ -159,143 +160,73 @@ await emitDriverLocation({
     [],
   );
 
-  /*
-   * STOP FOREGROUND ONLY
-   *
-   * Navigation or app backgrounding must
-   * not stop the native background task.
-   */
+
   const stopForegroundTracking = useCallback(() => {
     ++generationRef.current;
 
     subscriptionRef.current?.remove();
     subscriptionRef.current = null;
 
-    /*
-     * Do not unlock an in-flight network request
-     * here. Its finally block owns sendingRef.
-     */
+
     if (mountedRef.current) {
       setIsTracking(false);
     }
   }, []);
 
-  /*
-   * START TRACKING
-   */
-  const startTracking = useCallback(async () => {
-    if (!mountedRef.current || !activeRef.current) {
+  
+const startTracking = useCallback(async () => {
+  if (!mountedRef.current || !activeRef.current) {
+    return;
+  }
+  if (AppState.currentState !== "active") {
+    return;
+  }
+
+  const generation = generationRef.current;
+
+  if (
+    subscriptionRef.current ||
+    startingGenerationRef.current === generation
+  ) {
+    return;
+  }
+
+  startingGenerationRef.current = generation;
+
+  const stillCurrent = () =>
+    mountedRef.current &&
+    activeRef.current &&
+    AppState.currentState === "active" &&
+    generationRef.current === generation;
+
+  try {
+    setError(null);
+
+    const granted =
+      await ensureForegroundLocationPermission();
+
+    if (!stillCurrent()) {
       return;
     }
 
-    const generation = generationRef.current;
+    if (!granted) {
+      setPermissionGranted(false);
+      setBackgroundPermissionGranted(false);
+      setBackgroundStatus("unavailable");
 
-    if (
-      subscriptionRef.current ||
-      startingGenerationRef.current === generation
-    ) {
+      setError(
+        "Foreground location permission is required",
+      );
+
       return;
     }
 
-    startingGenerationRef.current = generation;
+    setPermissionGranted(true);
 
-    const stillCurrent = () =>
-      mountedRef.current &&
-      activeRef.current &&
-      generationRef.current === generation;
-
-    try {
-      setError(null);
-
-      /*
-       * Request foreground permission first.
-       */
-      const permission =
-        await Location.requestForegroundPermissionsAsync();
-
-      if (!stillCurrent()) {
-        return;
-      }
-
-      if (permission.status !== "granted") {
-        setPermissionGranted(false);
-        setBackgroundPermissionGranted(false);
-        setBackgroundStatus("unavailable");
-        setError("Location permission is required");
-        return;
-      }
-
-      setPermissionGranted(true);
-
-      /*
-       * NATIVE BACKGROUND TRACKING
-       *
-       * This is independent of the React watcher.
-       */
-      setBackgroundStatus("starting");
-
-      try {
-        await queueBackgroundOperation(async () => {
-          /*
-           * A shift may have ended while this
-           * request was waiting in the queue.
-           */
-          if (!stillCurrent()) {
-            return;
-          }
-
-          await startBackgroundLocationTracking();
-        });
-
-        if (stillCurrent()) {
-          const running =
-            await isBackgroundLocationTracking();
-
-          if (!stillCurrent()) {
-            return;
-          }
-
-          setBackgroundStatus(
-            running ? "active" : "unavailable",
-          );
-
-          setBackgroundPermissionGranted(running);
-        }
-      } catch (err) {
-        console.warn(
-          "[Location] Background tracking unavailable:",
-          err,
-        );
-
-        if (stillCurrent()) {
-          setBackgroundStatus("unavailable");
-          setBackgroundPermissionGranted(false);
-
-          setError(
-            getErrorMessage(
-              err,
-              "Background location tracking is unavailable",
-            ),
-          );
-        }
-
-        /*
-         * Continue foreground tracking even
-         * if background permission was denied.
-         */
-      }
-
-      if (!stillCurrent()) {
-        return;
-      }
-
-      /*
-       * FOREGROUND GPS WATCHER
-       *
-       * Socket.IO connects when a location
-       * actually needs to be transmitted.
-       */
-      const subscription = await Location.watchPositionAsync(
+    // 2. START FOREGROUND GPS FIRST
+    
+    const subscription =
+      await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
           timeInterval: intervalMs,
@@ -307,62 +238,129 @@ await emitDriverLocation({
           }
 
           setLastLocation(location);
+
+          // Send GPS to supervisor through Socket.IO.
           void sendLocation(location);
         },
       );
 
-      /*
-       * Important: async watchPositionAsync
-       * might resolve after tracking stopped.
-       */
+    // Tracking may have stopped while awaiting subscription.
+    if (!stillCurrent()) {
+      subscription.remove();
+      return;
+    }
+
+    subscriptionRef.current = subscription;
+    setIsTracking(true);
+
+    console.log(
+      "[Location] Foreground GPS tracking started",
+    );
+
+    // 3. SEND INITIAL GPS POSITION
+
+
+    void Location.getLastKnownPositionAsync({
+      maxAge: 15000,
+    })
+      .then((location) => {
+        if (!location || !stillCurrent()) {
+          return;
+        }
+
+        setLastLocation(location);
+        void sendLocation(location);
+      })
+      .catch((err) => {
+        console.warn(
+          "[Location] Initial GPS unavailable:",
+          err,
+        );
+      });
+
+   
+    // 4. START BACKGROUND TRACKING SEPARATELY
+   
+
+    setBackgroundStatus("starting");
+
+    void queueBackgroundOperation(async () => {
+      
       if (!stillCurrent()) {
-        subscription.remove();
         return;
       }
 
-      subscriptionRef.current = subscription;
-      setIsTracking(true);
+      await startBackgroundLocationTracking();
+    })
+      .then(async () => {
+        const running =
+          await isBackgroundLocationTracking();
 
-      /*
-       * Obtain an initial position without
-       * delaying watcher registration.
-       */
-      void Location.getLastKnownPositionAsync({
-        maxAge: 15000,
-      })
-        .then((location) => {
-          if (!location || !stillCurrent()) {
-            return;
-          }
+        
+        if (
+          !mountedRef.current ||
+          !activeRef.current ||
+          generationRef.current !== generation
+        ) {
+          return;
+        }
 
-          setLastLocation(location);
-          void sendLocation(location);
-        })
-        .catch(() => undefined);
-    } catch (err) {
-      if (stillCurrent()) {
-        setError(
-          getErrorMessage(
-            err,
-            "Unable to start foreground location tracking",
-          ),
+        setBackgroundStatus(
+          running ? "active" : "unavailable",
         );
 
-        setIsTracking(false);
-      }
-    } finally {
-      if (startingGenerationRef.current === generation) {
-        startingGenerationRef.current = null;
-      }
-    }
-  }, [intervalMs, distanceInterval, sendLocation]);
+        setBackgroundPermissionGranted(running);
 
-  /*
-   * FULL STOP
-   *
-   * Only run after the backend has confirmed
-   * that the driver's shift is inactive.
-   */
+        console.log(
+          "[Location] Background tracking status:",
+          running ? "active" : "unavailable",
+        );
+      })
+      .catch((err) => {
+        console.warn(
+          "[Location] Background tracking unavailable:",
+          err,
+        );
+
+        if (
+          !mountedRef.current ||
+          !activeRef.current ||
+          generationRef.current !== generation
+        ) {
+          return;
+        }
+
+        setBackgroundStatus("unavailable");
+        setBackgroundPermissionGranted(false);
+
+      });
+
+  } catch (err) {
+    console.error(
+      "[Location] Foreground GPS startup failed:",
+      err,
+    );
+
+    if (stillCurrent()) {
+      setError(
+        getErrorMessage(
+          err,
+          "Unable to start foreground location tracking",
+        ),
+      );
+
+      setIsTracking(false);
+    }
+  } finally {
+    if (
+      startingGenerationRef.current === generation
+    ) {
+      startingGenerationRef.current = null;
+    }
+  }
+}, [intervalMs, distanceInterval, sendLocation]);
+
+ 
   const stopTracking = useCallback(async () => {
     activeRef.current = false;
 
@@ -403,24 +401,12 @@ await emitDriverLocation({
     return () => {
       mountedRef.current = false;
 
-      /*
-       * Stop foreground watcher only.
-       * Leave native background tracking intact.
-       */
+    
       stopForegroundTracking();
     };
   }, [stopForegroundTracking]);
-
-  /*
-   * SHIFT-BASED TRACKING
-   */
   useEffect(() => {
-    /*
-     * Shift status is unknown.
-     *
-     * Never interpret loading or API failure
-     * as a confirmed ended shift.
-     */
+ 
     if (!ready) {
       return () => {
         stopForegroundTracking();
@@ -444,43 +430,57 @@ await emitDriverLocation({
     stopForegroundTracking,
   ]);
 
-  /*
-   * APP FOREGROUND / BACKGROUND
-   *
-   * Do not rely on the Socket.IO watcher
-   * to remain active in the background.
-   */
-  useEffect(() => {
-    const listener = AppState.addEventListener(
-      "change",
-      (state) => {
-        if (state !== "active") {
-          stopForegroundTracking();
-          return;
-        }
 
-        if (activeRef.current) {
-          void startTracking();
-        }
-      },
+useEffect(() => {
+  const handleAppStateChange = (
+    state: string,
+  ) => {
+  
+    if (
+      state !== "active" &&
+      isLocationPermissionPromptActive()
+    ) {
+      return;
+    }
+
+    if (state !== "active") {
+      console.log(
+        "[Location] App backgrounded",
+      );
+
+      stopForegroundTracking();
+      pauseSocket();
+
+     
+      return;
+    }
+
+    console.log(
+      "[Location] App foregrounded",
     );
 
-    return () => {
-      listener.remove();
-    };
-  }, [startTracking, stopForegroundTracking]);
+    if (activeRef.current) {
+      void startTracking();
+    }
+  };
+
+  const listener = AppState.addEventListener(
+    "change",
+    handleAppStateChange,
+  );
+
+  return () => {
+    listener.remove();
+  };
+}, [startTracking, stopForegroundTracking]);
 
   return {
-    /*
-     * Foreground watcher status.
-     */
+
     isTracking,
 
     permissionGranted,
 
-    /*
-     * Native background tracking status.
-     */
+  
     backgroundStatus,
     backgroundPermissionGranted,
 
