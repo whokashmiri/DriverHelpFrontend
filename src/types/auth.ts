@@ -1,4 +1,5 @@
 export type UserRole = "driver" | "supervisor" | "admin";
+export type VehicleType = "car" | "bike" | "other";
 
 export interface AuthUser {
   id: string;
@@ -12,8 +13,10 @@ export interface AuthUser {
   isActive: boolean;
 
   canDeliverOrders: boolean;
+  vehiclePlateNumber:string | null;
 
   supervisor?: string | null;
+  vehicleType?: VehicleType | null;
 
   lastLoginAt?: string | null;
   createdAt?: string;
