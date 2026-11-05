@@ -82,11 +82,7 @@ function getFriendlyOrderError(error: unknown, fallback: string) {
 
   const normalized = raw.toLowerCase();
 
-  /*
-   * Expo / Android camera lifecycle
-   * errors should never be shown
-   * directly to users.
-   */
+
   if (
     normalized.includes("activityresultlauncher") ||
     normalized.includes("illegalstateexception") ||
@@ -130,6 +126,10 @@ export default function DriverHomeScreen() {
 
   const { user } = useAuth();
 
+  const DAILY_DELIVERY_TARGET =
+  user?.vehicleType === "car" ? 17 : 14;
+  console.log(user)
+
   const { language } = useLanguage();
 
   
@@ -143,18 +143,17 @@ const {
   isEnding,
 } = useShift(language);
 
-const {
-  isTracking,
-  backgroundStatus,
-  permissionGranted,
-  backgroundPermissionGranted,
-  error: locationError,
-} = useLocationTracking({
-  enabled: isWorking,
-  ready: isShiftReady,
-  intervalMs: 3000,
-  distanceInterval: 3,
-});
+const MIN_SHIFT_SECONDS = 1 * 60;
+
+const shiftElapsedSeconds = timer
+  .split(":")
+  .reduce((total, part) => total * 60 + Number(part), 0);
+
+const canEndShift =
+  isWorking &&
+  isShiftReady &&
+  Number.isFinite(shiftElapsedSeconds) &&
+  shiftElapsedSeconds >= MIN_SHIFT_SECONDS;
 
 
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
@@ -206,6 +205,13 @@ const {
 
   const [orderElapsedSeconds, setOrderElapsedSeconds] = useState(0);
   const [finishShiftVisible, setFinishShiftVisible] = useState(false);
+
+  
+
+
+
+const [todayDelivered, setTodayDelivered] = useState<number | null>(null);
+const [checkingShiftEnd, setCheckingShiftEnd] = useState(false);
 
   const [isLoadingOrder, setIsLoadingOrder] = useState(true);
 
@@ -501,23 +507,51 @@ const loadOrders = useCallback(async () => {
     }
   };
 
-  const handleEndShift = () => {
-    if (isEnding) {
-      return;
+const handleEndShift = async () => {
+  if (isEnding || checkingShiftEnd || !canEndShift) {
+    return;
+  }
+
+  try {
+    setCheckingShiftEnd(true);
+    setTodayDelivered(null);
+
+    // Get today's completed deliveries from the backend.
+    const response = await getMyDashboardStats();
+
+    const delivered = response.stats.today.orders.delivered;
+
+    if (!Number.isFinite(delivered)) {
+      throw new Error("Invalid delivery count");
     }
 
+    setTodayDelivered(delivered);
     setFinishShiftVisible(true);
-  };
+  } catch (error) {
+    Alert.alert(
+      t("common.error", "Error"),
+      t(
+        "shifts.deliveryCountFailed",
+        "Unable to verify today's deliveries. Please try again.",
+      ),
+    );
+  } finally {
+    setCheckingShiftEnd(false);
+  }
+};
 
   const confirmEndShift = async () => {
-    try {
-      setFinishShiftVisible(false);
+  if (isEnding || !canEndShift) {
+    return;
+  }
 
-      await endShift();
-    } catch {
-      // handled by hook
-    }
-  };
+  try {
+    setFinishShiftVisible(false);
+    await endShift();
+  } catch {
+    // Handled by hook
+  }
+};
 
   const takeOrderPhoto = async (type: "pickup" | "delivery") => {
     /*
@@ -1050,6 +1084,8 @@ console.log(
                 isEnding={isEnding}
                 onStart={handleStartShift}
                 onEnd={handleEndShift}
+                canEndShift={canEndShift}
+                checkingShiftEnd={checkingShiftEnd}
               />
             </View>
           )}
@@ -1082,11 +1118,13 @@ console.log(
         </ScrollView>
       </View>
       <FinishShiftModal
-        visible={finishShiftVisible}
-        timer={timer}
-        isEnding={isEnding}
-        onContinue={() => setFinishShiftVisible(false)}
-        onFinish={() => void confirmEndShift()}
+      visible={finishShiftVisible}
+      timer={timer}
+      isEnding={isEnding}
+      todayDelivered={todayDelivered}
+      dailyTarget={DAILY_DELIVERY_TARGET}
+      onContinue={() => setFinishShiftVisible(false)}
+      onFinish={() => void confirmEndShift()}
       />
 
       <CancelOrderModal
@@ -1514,29 +1552,30 @@ function ShiftControl({
   timer,
   isStarting,
   isEnding,
+  checkingShiftEnd,
+  canEndShift,
   onStart,
   onEnd,
 }: {
   isWorking: boolean;
-
   timer: string;
-
   isStarting: boolean;
-
   isEnding: boolean;
-
+  checkingShiftEnd:boolean;
+  canEndShift: boolean;
   onStart: () => void;
-
   onEnd: () => void;
 }) {
   const { t } = useTranslation();
 
-  const loading = isWorking ? isEnding : isStarting;
+ const loading = isWorking
+  ? isEnding || checkingShiftEnd
+  : isStarting;
 
   return (
     <Pressable
       onPress={isWorking ? onEnd : onStart}
-      disabled={loading}
+      disabled={loading || (isWorking && !canEndShift)}
       style={({ pressed }) => [
         styles.shiftButton,
 
@@ -1544,7 +1583,8 @@ function ShiftControl({
 
         pressed && styles.shiftButtonPressed,
 
-        loading && styles.disabledButton,
+        (loading || (isWorking && !canEndShift)) &&
+  styles.disabledButton,
       ]}
     >
       {loading ? (
@@ -1572,16 +1612,24 @@ function FinishShiftModal({
   visible,
   timer,
   isEnding,
+  todayDelivered,
+  dailyTarget,
   onContinue,
   onFinish,
 }: {
   visible: boolean;
   timer: string;
   isEnding: boolean;
+  todayDelivered: number | null;
+  dailyTarget: number;
   onContinue: () => void;
   onFinish: () => void;
 }) {
   const { t } = useTranslation();
+
+  const belowTarget =
+    todayDelivered !== null &&
+    todayDelivered < dailyTarget;
 
   return (
     <Modal
@@ -1606,6 +1654,36 @@ function FinishShiftModal({
               "You've done enough for today. Finish your shift and get some rest?",
             )}
           </Text>
+
+            {belowTarget && (
+  <View style={styles.deliveryWarningBox}>
+    <Text style={styles.deliveryWarningTitle}>
+      {t(
+        "shifts.targetNotReached",
+        "Daily Delivery Target Not Reached",
+      )}
+    </Text>
+
+    <Text style={styles.deliveryWarningText}>
+      {t(
+        "shifts.targetWarning",
+        "You haven't completed today's delivery target.",
+      )}
+    </Text>
+
+    <Text style={styles.deliveryWarningCount}>
+      {todayDelivered} / {dailyTarget}
+    </Text>
+
+    <Text style={styles.deliveryWarningText}>
+      {t(
+        "shifts.finishAnyway",
+        "You can still end your shift.",
+      )}
+    </Text>
+  </View>
+)}
+
 
           <View style={styles.finishShiftTime}>
             <Text style={styles.finishShiftTimeLabel}>
@@ -3858,4 +3936,37 @@ const styles = StyleSheet.create({
 
     backgroundColor: "rgba(185,28,28,0.07)",
   },
+
+
+  deliveryWarningBox: {
+  width: "100%",
+  marginTop: 14,
+  padding: 12,
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: "#FCD34D",
+  backgroundColor: "#FFFBEB",
+  alignItems: "center",
+},
+
+deliveryWarningTitle: {
+  fontSize: 12,
+  fontWeight: "900",
+  color: "#92400E",
+  textAlign: "center",
+},
+
+deliveryWarningText: {
+  marginTop: 6,
+  fontSize: 10,
+  color: "#92400E",
+  textAlign: "center",
+},
+
+deliveryWarningCount: {
+  marginTop: 8,
+  fontSize: 20,
+  fontWeight: "900",
+  color: "#B45309",
+},
 });

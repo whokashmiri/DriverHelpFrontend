@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 
 import {
@@ -13,11 +14,8 @@ import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
 
 import { AppScreen } from "../../components/AppScreen";
-
 import { useAuth } from "../../hooks/useAuth";
-
 import { useLanguage } from "../../context/LanguageContext";
-
 import { getErrorMessage } from "../../utils";
 
 const COLORS = {
@@ -36,18 +34,36 @@ const COLORS = {
 
 export default function DriverProfileScreen() {
   const { t } = useTranslation();
-
   const { user, logout } = useAuth();
-
   const { language } = useLanguage();
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
 
   const isArabic = language === "ar";
 
+  // Only an explicit car assignment gets the car target.
+  // Missing or unknown vehicle types default to bike.
+  const vehicleType =
+    user?.vehicleType === "car" ? "car" : "bike";
+
+  const vehicleTypeLabel =
+    vehicleType === "car"
+      ? t("profile.car", "Car")
+      : t("profile.bike", "Bike");
+
+  const dailyDeliveryTarget =
+    vehicleType === "car" ? 17 : 14;
+
+  const statusLabel = user?.isActive
+    ? t("profile.active", "Active")
+    : t("profile.inactive", "Inactive");
+
   const handleLogout = async () => {
+    if (isLoggingOut) {
+      return;
+    }
+
     try {
       setIsLoggingOut(true);
       setError(null);
@@ -57,7 +73,10 @@ export default function DriverProfileScreen() {
       router.replace("/(auth)/login");
     } catch (err) {
       setError(
-        getErrorMessage(err, t("auth.logoutFailed", "Unable to logout")),
+        getErrorMessage(
+          err,
+          t("auth.logoutFailed", "Unable to logout"),
+        ),
       );
     } finally {
       setIsLoggingOut(false);
@@ -71,6 +90,7 @@ export default function DriverProfileScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {/* Back */}
         <Pressable
           onPress={() => router.back()}
           style={({ pressed }) => [
@@ -78,12 +98,18 @@ export default function DriverProfileScreen() {
             pressed && styles.backButtonPressed,
           ]}
         >
-          <Text style={styles.backText}>← {t("common.back", "Back")}</Text>
+          <Text style={styles.backText}>
+            {"← "}
+            {t("common.back", "Back")}
+          </Text>
         </Pressable>
 
+        {/* Compact profile header */}
         <View style={styles.header}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitials(user?.name)}</Text>
+            <Text style={styles.avatarText}>
+              {getInitials(user?.name)}
+            </Text>
           </View>
 
           <View style={styles.headerInfo}>
@@ -127,13 +153,12 @@ export default function DriverProfileScreen() {
                   : styles.statusTextInactive,
               ]}
             >
-              {user?.isActive
-                ? t("profile.active", "Active")
-                : t("profile.inactive", "Inactive")}
+              {statusLabel}
             </Text>
           </View>
         </View>
 
+        {/* Account information */}
         <Text
           style={[
             styles.sectionTitle,
@@ -142,55 +167,116 @@ export default function DriverProfileScreen() {
             },
           ]}
         >
-          {t("profile.accountInformation", "Account Information")}
+          {t(
+            "profile.accountInformation",
+            "Account Information",
+          )}
         </Text>
 
         <View style={styles.card}>
-          <ProfileRow
+          {/* Name */}
+          <ProfileField
             label={t("profile.name", "Name")}
             value={user?.name || "-"}
+            isArabic={isArabic}
           />
 
-          <ProfileRow
-            label={t("profile.iqama", "Iqama ID")}
-            value={user?.iqamaId || "-"}
-          />
+          {/* Iqama and phone */}
+          <View style={styles.fieldRow}>
+            <ProfileField
+              label={t("profile.iqama", "Iqama ID")}
+              value={user?.iqamaId || "-"}
+              isArabic={isArabic}
+              flex
+            />
 
-          <ProfileRow
-            label={t("profile.role", "Role")}
-            value={t("profile.driver", "Driver")}
-          />
+            <ProfileField
+              label={t("profile.phone", "Phone Number")}
+              value={user?.phone || "-"}
+              isArabic={isArabic}
+              flex
+            />
+          </View>
 
-          <ProfileRow
-            label={t("profile.status", "Status")}
-            value={
-              user?.isActive
-                ? t("profile.active", "Active")
-                : t("profile.inactive", "Inactive")
-            }
-            isLast
+          {/* Role and vehicle */}
+          <View style={styles.fieldRow}>
+            <ProfileField
+              label={t("profile.role", "Role")}
+              value={t("profile.driver", "Driver")}
+              isArabic={isArabic}
+              flex
+            />
+
+            <ProfileField
+              label={t("profile.vehicleType", "Vehicle Type")}
+              value={vehicleTypeLabel}
+              isArabic={isArabic}
+              flex
+            />
+          </View>
+
+          {/* Target and status */}
+          <View style={styles.fieldRow}>
+            <ProfileField
+              label={t("profile.dailyTarget", "Daily Target")}
+              value={`${dailyDeliveryTarget} ${t(
+                "profile.deliveries",
+                "Deliveries",
+              )}`}
+              isArabic={isArabic}
+              flex
+            />
+
+            <ProfileField
+              label={t("profile.status", "Status")}
+              value={statusLabel}
+              isArabic={isArabic}
+              flex
+              valueColor={
+                user?.isActive ? COLORS.success : COLORS.error
+              }
+            />
+          </View>
+
+          {/* Vehicle plate */}
+          <ProfileField
+            label={t(
+              "profile.vehiclePlate",
+              "Vehicle Plate Number",
+            )}
+            value={user?.vehiclePlateNumber || "-"}
+            isArabic={isArabic}
           />
         </View>
 
+        {/* Error */}
         {!!error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
 
+        {/* Logout */}
         <Pressable
           disabled={isLoggingOut}
           onPress={handleLogout}
           style={({ pressed }) => [
             styles.logoutButton,
-            pressed && !isLoggingOut && styles.logoutButtonPressed,
+            pressed &&
+              !isLoggingOut &&
+              styles.logoutButtonPressed,
             isLoggingOut && styles.disabledButton,
           ]}
         >
           {isLoggingOut ? (
-            <ActivityIndicator size="small" color={COLORS.white} />
+            <ActivityIndicator
+              size="small"
+              color={COLORS.white}
+            />
           ) : (
-            <Text style={styles.logoutText}>{t("auth.logout", "Logout")}</Text>
+            <Text style={styles.logoutText}>
+              {t("auth.logout", "Logout")}
+            </Text>
           )}
         </Pressable>
       </ScrollView>
@@ -198,21 +284,54 @@ export default function DriverProfileScreen() {
   );
 }
 
-function ProfileRow({
+/*
+ * Compact reusable information field.
+ * Safe for empty or missing values.
+ */
+function ProfileField({
   label,
   value,
-  isLast = false,
+  flex = false,
+  isArabic = false,
+  valueColor,
 }: {
   label: string;
   value: string;
-  isLast?: boolean;
+  flex?: boolean;
+  isArabic?: boolean;
+  valueColor?: string;
 }) {
   return (
-    <View style={[styles.row, isLast && styles.rowLast]}>
-      <Text style={styles.label}>{label}</Text>
+    <View
+      style={[
+        styles.field,
+        flex && styles.fieldFlex,
+      ]}
+    >
+      <Text
+        style={[
+          styles.fieldLabel,
+          {
+            textAlign: isArabic ? "right" : "left",
+          },
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
 
-      <Text style={styles.value} numberOfLines={1}>
-        {value}
+      <Text
+        style={[
+          styles.fieldValue,
+          valueColor ? { color: valueColor } : null,
+          {
+            textAlign: isArabic ? "right" : "left",
+          },
+        ]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {value || "-"}
       </Text>
     </View>
   );
@@ -241,21 +360,17 @@ const styles = StyleSheet.create({
   content: {
     width: "100%",
     maxWidth: 720,
-
     alignSelf: "center",
-
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 32,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
 
   backButton: {
     alignSelf: "flex-start",
-
     paddingVertical: 5,
     paddingRight: 8,
-
-    marginBottom: 12,
+    marginBottom: 7,
   },
 
   backButtonPressed: {
@@ -263,72 +378,58 @@ const styles = StyleSheet.create({
   },
 
   backText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-
     color: COLORS.secondary,
   },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
-
-    padding: 12,
-
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
-
-    borderRadius: 14,
-
+    borderRadius: 12,
     backgroundColor: COLORS.white,
-
-    marginBottom: 18,
+    marginBottom: 12,
   },
 
   avatar: {
-    width: 44,
-    height: 44,
-
-    borderRadius: 22,
-
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-
     backgroundColor: COLORS.primary,
   },
 
   avatarText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
-
     color: COLORS.white,
   },
 
   headerInfo: {
     flex: 1,
-
-    marginHorizontal: 10,
+    minWidth: 0,
+    marginHorizontal: 9,
   },
 
   name: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
-
     color: COLORS.primary,
   },
 
   role: {
     marginTop: 2,
-
-    fontSize: 10,
-
+    fontSize: 9,
     color: COLORS.muted,
   },
 
   statusBadge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 4,
-
     borderRadius: 999,
   },
 
@@ -354,81 +455,70 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    marginBottom: 7,
-
-    fontSize: 12,
+    marginBottom: 6,
+    fontSize: 11,
     fontWeight: "800",
-
     color: COLORS.primary,
   },
 
   card: {
-    overflow: "hidden",
-
-    paddingHorizontal: 12,
-
+    padding: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
-
-    borderRadius: 14,
-
+    borderRadius: 12,
     backgroundColor: COLORS.white,
+    gap: 6,
   },
 
-  row: {
-    paddingVertical: 11,
-
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+  fieldRow: {
+    flexDirection: "row",
+    gap: 6,
   },
 
-  rowLast: {
-    borderBottomWidth: 0,
+  field: {
+    minWidth: 0,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: COLORS.light,
   },
 
-  label: {
-    marginBottom: 2,
+  fieldFlex: {
+    flex: 1,
+  },
 
+  fieldLabel: {
+    marginBottom: 3,
     fontSize: 9,
     fontWeight: "600",
-
     color: COLORS.muted,
   },
 
-  value: {
-    fontSize: 12,
-    fontWeight: "700",
-
+  fieldValue: {
+    fontSize: 11,
+    fontWeight: "800",
     color: COLORS.black,
   },
 
   errorBox: {
-    marginTop: 12,
-
+    marginTop: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
-
     borderRadius: 9,
-
     backgroundColor: COLORS.errorLight,
   },
 
   errorText: {
     fontSize: 10,
-
     color: COLORS.error,
   },
 
   logoutButton: {
-    height: 44,
-
-    marginTop: 16,
-
+    height: 40,
+    marginTop: 12,
     alignItems: "center",
     justifyContent: "center",
-
-    borderRadius: 11,
-
+    borderRadius: 10,
     backgroundColor: COLORS.error,
   },
 
@@ -437,9 +527,8 @@ const styles = StyleSheet.create({
   },
 
   logoutText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "800",
-
     color: COLORS.white,
   },
 
