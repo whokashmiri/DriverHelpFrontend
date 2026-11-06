@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "787765626886",
+    "project_id": "spark-go-ad28b",
+    "storage_bucket": "spark-go-ad28b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:787765626886:android:376b3c6f196e036ac49b87",
+        "android_client_info": {
+          "package_name": "com.drivo.mobileapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCH-NXBOl5LnwwuQ2LmgpPUrCCx-EXNSbw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
