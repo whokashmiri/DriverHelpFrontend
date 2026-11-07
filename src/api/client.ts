@@ -23,6 +23,8 @@ export const SERVER_URL =
 export const API_BASE_URL = `${SERVER_URL}/api`;
 
 const AUTH_TOKEN_KEY = "authToken";
+export const REGISTERED_PUSH_TOKEN_KEY =
+  "registeredExpoPushToken";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -102,6 +104,61 @@ export async function getToken() {
   return SecureStore.getItemAsync(AUTH_TOKEN_KEY);
 }
 
+
 export async function removeToken() {
-  await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+  try {
+    // Read the device token before
+    // removing the authentication token.
+    const authToken =
+      await SecureStore.getItemAsync(
+        AUTH_TOKEN_KEY,
+      );
+
+    const pushToken =
+      await SecureStore.getItemAsync(
+        REGISTERED_PUSH_TOKEN_KEY,
+      );
+
+    if (authToken && pushToken) {
+      try {
+     
+        await api.delete(
+          "/notifications/token",
+          {
+            data: {
+              token: pushToken,
+            },
+
+            timeout: 5000,
+          },
+        );
+
+        console.log(
+          "[PUSH] Device token unregistered",
+        );
+      } catch (error) {
+     
+        console.warn(
+          "[PUSH] Logout cleanup failed:",
+          error,
+        );
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "[PUSH] Unable to read device token:",
+      error,
+    );
+  } finally {
+   
+    try {
+      await SecureStore.deleteItemAsync(
+        REGISTERED_PUSH_TOKEN_KEY,
+      );
+    } finally {
+      await SecureStore.deleteItemAsync(
+        AUTH_TOKEN_KEY,
+      );
+    }
+  }
 }
