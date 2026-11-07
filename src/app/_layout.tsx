@@ -13,6 +13,9 @@ import { useAppUpdates } from "../hooks/useAppUpdates";
 import { useForceUpdate } from "../hooks/useForceUpdate";
 
 import ForceUpdateScreen from "../components/ForceUpdateScreen";
+import PushNotificationManager from "../components/PushNotificationManager";
+
+import "../services/pushNotifications";
 
 import { AuthProvider } from "@/context/AuthContext";
 import { AppModeProvider } from "@/context/AppModeContext";
@@ -75,6 +78,9 @@ export default function RootLayout() {
     <LanguageProvider>
       <AuthProvider>
         <AppModeProvider>
+          {/* Register driver push notifications */}
+          <PushNotificationManager />
+
           <Stack
             screenOptions={{
               headerShown: false,

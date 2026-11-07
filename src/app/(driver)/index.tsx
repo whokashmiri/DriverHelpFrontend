@@ -14,6 +14,7 @@ import {
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
+import { Camera } from "expo-camera";
 
 import { useFocusEffect } from "expo-router";
 
@@ -22,6 +23,7 @@ import { useTranslation } from "react-i18next";
 import { ImagePlus, Pencil, Trash2, X } from "lucide-react-native";
 
 import { AppScreen } from "../../components/AppScreen";
+import DriverCamera, { type DriverCameraPhoto } from "../../components/DriverCamera";
 
 import {
   cancelOrder,
@@ -49,7 +51,6 @@ import type { DriverShift } from "../../types/shift";
 import type { MyDashboardStatsResponse } from "../../types/stats";
 
 import {
-  compressOrderImage,
   compressOrderImages,
   formatDateTime,
   getErrorMessage,
@@ -128,7 +129,7 @@ export default function DriverHomeScreen() {
 
   const DAILY_DELIVERY_TARGET =
   user?.vehicleType === "car" ? 17 : 14;
-  console.log(user)
+
 
   const { language } = useLanguage();
 
@@ -222,6 +223,8 @@ const [checkingShiftEnd, setCheckingShiftEnd] = useState(false);
   const cameraOpeningRef = useRef(false);
 
   const [isOpeningCamera, setIsOpeningCamera] = useState(false);
+  const [cameraType, setCameraType] = useState<"pickup" | "delivery" | null>(null);
+  const [cameraPermissionGranted, setCameraPermissionGranted] = useState(false);
 
   const recoverActiveOrder = useCallback(async () => {
   try {
@@ -554,210 +557,110 @@ const handleEndShift = async () => {
 };
 
   const takeOrderPhoto = async (type: "pickup" | "delivery") => {
-    /*
-     * Prevent double taps / concurrent
-     * ImagePicker launches.
-     */
-    if (cameraOpeningRef.current) {
+    if (
+      cameraOpeningRef.current ||
+      uploadingPickup ||
+      uploadingDelivery ||
+      cameraType !== null
+    ) {
       return;
     }
 
-    try {
-      cameraOpeningRef.current = true;
+    setOrderError(null);
 
-      setIsOpeningCamera(true);
-
-      setOrderError(null);
-
-      /*
-       * PICKUP VALIDATION
-       */
-      if (type === "pickup" && (activeOrder || uploadingPickup)) {
+    if (type === "pickup") {
+      if (activeOrder) {
         setOrderError(
           t(
             "orders.activeOrderExists",
             "Complete or cancel the current delivery before creating another pickup.",
           ),
         );
-
         return;
       }
 
-      if (type === "pickup" && !isWorking) {
+      if (!isWorking) {
         setOrderError(t("driver.startShiftFirst", "Start your shift first"));
-
         return;
       }
-
-      /*
-       * DELIVERY VALIDATION
-       */
-      if (type === "delivery" && !activeOrder) {
-        setOrderError(
-          t("orders.noActiveOrder", "There is no active delivery to complete."),
-        );
-
-        return;
-      }
-
-      if (type === "delivery" && uploadingDelivery) {
-        return;
-      }
-
-      /*
-       * CAMERA PERMISSION
-       */
-
-/*
- * CAMERA PERMISSION + LAUNCH
- */
-const startedAt = performance.now();
-
-let permission =
-  await ImagePicker.getCameraPermissionsAsync();
-
-console.log(
-  `[CAMERA] Permission check: ${Math.round(
-    performance.now() - startedAt,
-  )}ms`,
-);
-
-if (!permission.granted) {
-  permission =
-    await ImagePicker.requestCameraPermissionsAsync();
-
-  if (!permission.granted) {
-    Alert.alert(
-      t("common.permissionRequired", "Permission Required"),
-      t(
-        "orders.cameraPermission",
-        "Camera permission is required.",
-      ),
-    );
-    return;
-  }
-
-  // Permission dialog may cause an Android activity transition.
-  // Only allow a brief stabilization delay in this case.
-  await new Promise((resolve) => setTimeout(resolve, 150));
-}
-
-const launchStartedAt = performance.now();
-
-console.log(`[CAMERA] Launch requested: ${type}`);
-
-const result = await ImagePicker.launchCameraAsync({
-  mediaTypes: ["images"],
-  allowsEditing: false,
-  quality: 0.8,
-  cameraType: ImagePicker.CameraType.back,
-});
-
-console.log(
-  `[CAMERA] Camera returned after ${Math.round(
-    performance.now() - launchStartedAt,
-  )}ms`,
-);
-;
-
-      if (result.canceled) {
-        return;
-      }
-
-      const asset = result.assets?.[0];
-
-      if (!asset?.uri) {
-        setOrderError(
-          t(
-            "orders.photoFailed",
-            "Unable to read the captured photo. Please try again.",
-          ),
-        );
-
-        return;
-      }
-
-      const capturedPhoto: OrderPhotoInput = {
-        uri: asset.uri,
-
-        time: new Date(),
-      };
-
-      /*
-       * Optimistic preview.
-       */
-      if (type === "pickup") {
-        setPickupPhoto(capturedPhoto);
-
-        setUploadingPickup(true);
-
-        void processPickupInBackground(capturedPhoto);
-
-        return;
-      }
-
-      setDeliveryPhoto(capturedPhoto);
-
-      setUploadingDelivery(true);
-
-      void processDeliveryInBackground(capturedPhoto);
-    } catch (error) {
-      const message = getFriendlyOrderError(
-        error,
-        t("orders.photoFailed", "Unable to open the camera. Please try again."),
+    } else if (!activeOrder?._id) {
+      setOrderError(
+        t("orders.noActiveOrder", "There is no active delivery to complete."),
       );
+      return;
+    }
 
-      setOrderError(message);
-
-      /*
-       * For camera-specific errors, also
-       * show a proper native alert.
-       */
-      Alert.alert(t("orders.cameraError", "Camera Error"), message);
+    cameraOpeningRef.current = true;
+    setIsOpeningCamera(true);
+    try {
+      // Request camera permission in index.tsx only, not in DriverCamera.
+      let permission = await Camera.getCameraPermissionsAsync();
+      if (!permission.granted && permission.canAskAgain) {
+        permission = await Camera.requestCameraPermissionsAsync();
+      }
+      setCameraPermissionGranted(permission.granted);
+      if (!permission.granted) {
+        Alert.alert(
+          t("common.permissionRequired", "Permission Required"),
+          t("orders.cameraPermission", "Camera permission is required."),
+        );
+        return;
+      }
+      setCameraType(type);
+    } catch (error) {
+      setOrderError(getFriendlyOrderError(error, "Unable to access the camera."));
     } finally {
       cameraOpeningRef.current = false;
-
       setIsOpeningCamera(false);
     }
+  };
+
+  const closeOrderCamera = () => {
+    if (uploadingPickup || uploadingDelivery) return;
+    cameraOpeningRef.current = false;
+    setCameraType(null);
+    setIsOpeningCamera(false);
+  };
+
+  // DriverCamera returns an already resized and compressed JPEG.
+  // Do not compress it again before uploading.
+  const handleCameraPhotoReady = (photo: DriverCameraPhoto) => {
+    const type = cameraType;
+    if (!type) return;
+
+    // A timestamp belongs to this captured/selected photo, not to upload completion.
+    const capturedPhoto: OrderPhotoInput = {
+      uri: photo.uri,
+      time: new Date(photo.capturedAt),
+    };
+
+    cameraOpeningRef.current = false;
+    setCameraType(null);
+    setIsOpeningCamera(false);
+
+    if (type === "pickup") {
+      if (!isWorking || activeOrder || uploadingPickup || uploadingDelivery) {
+        return;
+      }
+      setPickupPhoto(capturedPhoto);
+      setUploadingPickup(true);
+      void processPickupInBackground(capturedPhoto);
+      return;
+    }
+
+    if (!activeOrder?._id || uploadingPickup || uploadingDelivery) return;
+    setDeliveryPhoto(capturedPhoto);
+    setUploadingDelivery(true);
+    void processDeliveryInBackground(capturedPhoto);
   };
 
   const processPickupInBackground = async (capturedPhoto: OrderPhotoInput) => {
     try {
       setOrderError(null);
 
-      /*
-       * STEP 1:
-       * Compress local camera image.
-       */
-      const compressedUri = await compressOrderImage(
-        capturedPhoto.uri,
-        "pickup",
-      );
-
-      const compressedPhoto: OrderPhotoInput = {
-        uri: compressedUri,
-
-        /*
-         * Keep the original capture time.
-         * Compression time must NOT become
-         * pickup time.
-         */
-        time: capturedPhoto.time,
-      };
-
-      /*
-       * Replace preview with compressed file.
-       * UI remains visible throughout.
-       */
-      setPickupPhoto(compressedPhoto);
-
-      /*
-       * STEP 2:
-       * Upload compressed image.
-       */
+      // Photo is already compressed by DriverCamera.
       const response = await createPickupOrder({
-        pickupPhoto: compressedPhoto,
-
+        pickupPhoto: capturedPhoto,
         notes: orderNotes.trim() || undefined,
       });
 
@@ -830,31 +733,10 @@ console.log(
     try {
       setOrderError(null);
 
-      /*
-       * STEP 1:
-       * Compress in background.
-       */
-      const compressedUri = await compressOrderImage(
-        capturedPhoto.uri,
-        "delivery",
-      );
-
-      const compressedPhoto: OrderPhotoInput = {
-        uri: compressedUri,
-
-        time: capturedPhoto.time,
-      };
-
-      setDeliveryPhoto(compressedPhoto);
-
-      /*
-       * STEP 2:
-       * Upload compressed file.
-       */
+      // Photo is already compressed by DriverCamera.
       const response = await completeOrderDelivery({
         orderId: currentOrder._id,
-
-        deliveryPhoto: compressedPhoto,
+        deliveryPhoto: capturedPhoto,
       });
 
       const completedOrder = response.order;
@@ -1117,6 +999,16 @@ console.log(
           {tab === "stats" && <StatsPanel stats={stats} />}
         </ScrollView>
       </View>
+      <DriverCamera
+        visible={cameraType !== null}
+        cameraPermissionGranted={cameraPermissionGranted}
+        title={cameraType === "delivery"
+          ? t("orders.deliveryPhoto", "Delivery Photo")
+          : t("orders.pickup", "Pickup Photo")}
+        onClose={closeOrderCamera}
+        onPhotoReady={handleCameraPhotoReady}
+        uploading={uploadingPickup || uploadingDelivery}
+      />
       <FinishShiftModal
       visible={finishShiftVisible}
       timer={timer}

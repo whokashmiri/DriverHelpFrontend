@@ -17,6 +17,8 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+spark-go-ad28b-firebase-adminsdk-fbsvc-cfa678cd7b.json
+google-services.json
 
 # Metro
 .metro-health-check*

@@ -1,4 +1,6 @@
 import { useCallback, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
   ActivityIndicator,
@@ -85,9 +87,7 @@ type DashboardDriverRow = {
   };
 };
 
-/**
- * Format shift time in Riyadh time.
- */
+
 function formatTime(value: string | null | undefined) {
   if (!value) {
     return "--";
@@ -107,13 +107,7 @@ function formatTime(value: string | null | undefined) {
   }).format(date);
 }
 
-/**
- * Format seconds as:
- *
- * 7h 30m
- *
- * instead of 7.50 or 7.30.
- */
+
 function formatDuration(seconds: number | null | undefined) {
   const safeSeconds = Math.max(0, Number(seconds) || 0);
 
@@ -142,6 +136,7 @@ export default function SupervisorHomeScreen() {
   const { t } = useTranslation();
 
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [dashboardDrivers, setDashboardDrivers] = useState<
     SupervisorDashboardDriverItem[]
@@ -187,10 +182,7 @@ export default function SupervisorHomeScreen() {
     }, [loadData]),
   );
 
-  /*
-   * Convert backend dashboard
-   * response into UI rows.
-   */
+ 
   const driverRows: DashboardDriverRow[] = dashboardDrivers.map((item) => ({
     _id: item.driver._id,
 
@@ -214,18 +206,7 @@ export default function SupervisorHomeScreen() {
     todayWork: item.todayWork,
   }));
 
-  /*
-   * Supervisor can also work as
-   * a delivery user.
-   *
-   * Keep existing behavior:
-   * show supervisor only when
-   * supervisor currently has
-   * an active shift.
-   *
-   * Driver statistics are not
-   * rendered for this special row.
-   */
+ 
   const supervisorWorkingRow: DashboardDriverRow | null =
     supervisorIsWorking && user
       ? {
@@ -267,24 +248,14 @@ export default function SupervisorHomeScreen() {
         }
       : null;
 
-  /*
-   * Actual managed driver count.
-   *
-   * Supervisor is intentionally
-   * not included here.
-   */
+
   const totalDrivers = driverRows.length;
 
   const actualWorkingDrivers = driverRows.filter((driver) => driver.workingNow);
 
   const notWorkingDrivers = driverRows.filter((driver) => !driver.workingNow);
 
-  /*
-   * Preserve existing behavior:
-   *
-   * Supervisor appears in the
-   * Working list when working.
-   */
+
   const workingDrivers: DashboardDriverRow[] = supervisorWorkingRow
     ? [supervisorWorkingRow, ...actualWorkingDrivers]
     : actualWorkingDrivers;
@@ -312,6 +283,7 @@ export default function SupervisorHomeScreen() {
         : t("supervisor.drivers", "Drivers");
 
   return (
+    <SafeAreaProvider>
     <AppScreen>
       <View style={styles.screen}>
         <View style={styles.content}>
@@ -333,9 +305,7 @@ export default function SupervisorHomeScreen() {
             </View>
           ) : (
             <>
-              {/*
-               * TOP STAT CARDS
-               */}
+           
               <View style={styles.statsRow}>
                 <StatCard
                   label={t("supervisor.totalDrivers", "Drivers")}
@@ -359,12 +329,7 @@ export default function SupervisorHomeScreen() {
                 />
               </View>
 
-              {/*
-               * DRIVER SECTION
-               *
-               * This takes remaining
-               * available height.
-               */}
+            
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <View style={styles.sectionTitleRow}>
@@ -408,12 +373,6 @@ export default function SupervisorHomeScreen() {
                     </Text>
                   </View>
                 ) : (
-                  /*
-                   * ONLY THIS AREA SCROLLS.
-                   *
-                   * Quick actions below
-                   * remain on screen.
-                   */
                   <ScrollView
                     style={styles.driverList}
                     contentContainerStyle={styles.driverListContent}
@@ -427,13 +386,12 @@ export default function SupervisorHomeScreen() {
                 )}
               </View>
 
-              {/*
-               * FIXED QUICK ACTIONS
-               */}
-              <View style={styles.quickActionsContainer}>
-                <Text style={styles.actionsTitle}>
-                  {t("supervisor.quickActions", "Quick Actions")}
-                </Text>
+            
+              <View   style={[
+    styles.quickActionsContainer,
+    { paddingBottom: insets.bottom - 10 },
+  ]}
+>
 
                 <View style={styles.actions}>
                   <DashboardButton
@@ -462,6 +420,7 @@ export default function SupervisorHomeScreen() {
         </View>
       </View>
     </AppScreen>
+    </SafeAreaProvider>
   );
 }
 
@@ -496,9 +455,7 @@ function DriverRow({ driver }: { driver: DashboardDriverRow }) {
         pressed && styles.driverRowPressed,
       ]}
     >
-      {/*
-       * DRIVER IDENTITY ROW
-       */}
+   
       <View style={styles.driverTopRow}>
         <View style={styles.driverAvatar}>
           {driver.profilePictureUrl ? (
@@ -568,17 +525,10 @@ function DriverRow({ driver }: { driver: DashboardDriverRow }) {
         )}
       </View>
 
-      {/*
-       * SUPERVISOR SPECIAL ROW:
-       * don't show driver-specific
-       * dashboard statistics.
-       */}
+   
       {!isSupervisor && (
         <View style={styles.driverMetrics}>
-          {/* <DriverMetric
-            label={t("supervisor.deliveredToday", "Today")}
-            value={String(driver.orders.deliveredToday)}
-          /> */}
+        
 
           <DriverMetric
             label={t("supervisor.deliveredMonth", "Month")}
@@ -695,12 +645,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.light,
   },
 
-  /*
-   * flex: 1 is important.
-   *
-   * The dashboard itself no
-   * longer scrolls.
-   */
+
   content: {
     flex: 1,
 
@@ -760,9 +705,7 @@ const styles = StyleSheet.create({
     color: COLORS.error,
   },
 
-  /*
-   * TOP STATS
-   */
+ 
   statsRow: {
     flexDirection: "row",
 
@@ -833,14 +776,6 @@ const styles = StyleSheet.create({
     color: "#D9E6E7",
   },
 
-  /*
-   * DRIVER SECTION
-   *
-   * flex: 1 means it fills
-   * remaining screen space.
-   *
-   * Quick actions remain below.
-   */
   section: {
     flex: 1,
 
@@ -943,9 +878,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  /*
-   * Independent driver scroll.
-   */
+ 
   driverList: {
     flex: 1,
 
@@ -956,9 +889,7 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
 
-  /*
-   * DRIVER ROW
-   */
+
   driverRow: {
     minHeight: 82,
 
@@ -966,7 +897,7 @@ const styles = StyleSheet.create({
 
     borderBottomWidth: StyleSheet.hairlineWidth,
 
-    // borderBottomColor: COLORS.border,
+
   },
 
   driverRowPressed: {
@@ -1081,12 +1012,7 @@ const styles = StyleSheet.create({
     color: COLORS.error,
   },
 
-  /*
-   * DRIVER METRICS
-   *
-   * Today | Month | Start |
-   * Finish | Total
-   */
+
   driverMetrics: {
     flexDirection: "row",
 
@@ -1154,28 +1080,9 @@ const styles = StyleSheet.create({
 
     textAlign: "center",
   },
-
-  /*
-   * QUICK ACTIONS
-   *
-   * This container is outside
-   * driver ScrollView, therefore
-   * it remains visible.
-   */
-  quickActionsContainer: {
-    flexShrink: 0,
-    paddingBottom: 20,
-  },
-
-  actionsTitle: {
-    marginBottom: 6,
-
-    fontSize: 11,
-
-    fontWeight: "800",
-
-    color: COLORS.primary,
-  },
+quickActionsContainer: {
+  flexShrink: 0,
+},
 
   actions: {
     flexDirection: "row",
