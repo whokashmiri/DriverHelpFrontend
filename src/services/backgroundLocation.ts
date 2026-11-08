@@ -358,16 +358,11 @@ TaskManager.defineTask<BackgroundLocationTaskData>(
  *
  * Calling request on every foreground event therefore
  * creates an endless background/foreground loop.
- * Always check first and only prompt when needed.
+ * Tracking code therefore only checks permissions.
+ * Prompts come from requestAlwaysLocationPermission(),
+ * which runs only after the driver accepts an alert.
  */
 let permissionPromptDepth = 0;
-
-/*
- * Ask for "Allow all the time" at most once per
- * app session. Re-prompting automatically after a
- * denial would reopen the dialog on every resume.
- */
-let backgroundPermissionPrompted = false;
 
 export function isLocationPermissionPromptActive(): boolean {
   return permissionPromptDepth > 0;
@@ -385,28 +380,60 @@ async function withPermissionPrompt<T>(
   }
 }
 
-export async function ensureForegroundLocationPermission():
+export async function hasForegroundLocationPermission():
   Promise<boolean> {
   const current =
     await Location.getForegroundPermissionsAsync();
 
-  if (current.granted) {
-    return true;
-  }
-
-  if (!current.canAskAgain) {
-    return false;
-  }
-
-  const result = await withPermissionPrompt(() =>
-    Location.requestForegroundPermissionsAsync(),
-  );
-
-  return result.granted;
+  return current.granted;
 }
 
-export async function ensureBackgroundLocationPermission():
+/*
+ * True only for "Allow all the time".
+ */
+export async function hasAlwaysLocationPermission():
   Promise<boolean> {
+  const [foreground, background] = await Promise.all([
+    Location.getForegroundPermissionsAsync(),
+    Location.getBackgroundPermissionsAsync(),
+  ]);
+
+  return foreground.granted && background.granted;
+}
+
+/*
+ * False when Android will no longer show its prompt
+ * and the driver must change the permission in Settings.
+ */
+export async function canRequestAlwaysLocationPermission():
+  Promise<boolean> {
+  const [foreground, background] = await Promise.all([
+    Location.getForegroundPermissionsAsync(),
+    Location.getBackgroundPermissionsAsync(),
+  ]);
+
+  return (
+    (foreground.granted || foreground.canAskAgain) &&
+    (background.granted || background.canAskAgain)
+  );
+}
+
+/*
+ * Android requires foreground access before background
+ * access, so the two must be requested in this order.
+ */
+export async function requestAlwaysLocationPermission():
+  Promise<boolean> {
+  if (!(await hasForegroundLocationPermission())) {
+    const foreground = await withPermissionPrompt(() =>
+      Location.requestForegroundPermissionsAsync(),
+    );
+
+    if (!foreground.granted) {
+      return false;
+    }
+  }
+
   const current =
     await Location.getBackgroundPermissionsAsync();
 
@@ -414,20 +441,11 @@ export async function ensureBackgroundLocationPermission():
     return true;
   }
 
-  if (
-    backgroundPermissionPrompted ||
-    !current.canAskAgain
-  ) {
-    return false;
-  }
-
-  backgroundPermissionPrompted = true;
-
-  const result = await withPermissionPrompt(() =>
+  const background = await withPermissionPrompt(() =>
     Location.requestBackgroundPermissionsAsync(),
   );
 
-  return result.granted;
+  return background.granted;
 }
 
 /*
@@ -445,15 +463,9 @@ export async function startBackgroundLocationTracking():
     return;
   }
 
-  if (!(await ensureForegroundLocationPermission())) {
+  if (!(await hasAlwaysLocationPermission())) {
     throw new Error(
-      "Foreground location permission is required",
-    );
-  }
-
-  if (!(await ensureBackgroundLocationPermission())) {
-    throw new Error(
-      "Background location permission is required",
+      "Allow all the time location permission is required",
     );
   }
 
