@@ -14,7 +14,7 @@ import {
 } from "../socket/socket";
 
 import {
-  ensureForegroundLocationPermission,
+  hasForegroundLocationPermission,
   isLocationPermissionPromptActive,
   isBackgroundLocationTracking,
   startBackgroundLocationTracking,
@@ -173,7 +173,58 @@ console.log("[GPS] Socket ACK:", {
     }
   }, []);
 
-  
+  const startBackgroundTracking = useCallback(
+    (generation: number) => {
+      const stillCurrent = () =>
+        mountedRef.current &&
+        activeRef.current &&
+        generationRef.current === generation;
+
+      setBackgroundStatus("starting");
+
+      void queueBackgroundOperation(async () => {
+        if (!stillCurrent()) {
+          return;
+        }
+
+        await startBackgroundLocationTracking();
+      })
+        .then(async () => {
+          const running =
+            await isBackgroundLocationTracking();
+
+          if (!stillCurrent()) {
+            return;
+          }
+
+          setBackgroundStatus(
+            running ? "active" : "unavailable",
+          );
+
+          setBackgroundPermissionGranted(running);
+
+          console.log(
+            "[Location] Background tracking status:",
+            running ? "active" : "unavailable",
+          );
+        })
+        .catch((err) => {
+          console.warn(
+            "[Location] Background tracking unavailable:",
+            err,
+          );
+
+          if (!stillCurrent()) {
+            return;
+          }
+
+          setBackgroundStatus("unavailable");
+          setBackgroundPermissionGranted(false);
+        });
+    },
+    [],
+  );
+
 const startTracking = useCallback(async () => {
   if (!mountedRef.current || !activeRef.current) {
     return;
@@ -184,10 +235,14 @@ const startTracking = useCallback(async () => {
 
   const generation = generationRef.current;
 
-  if (
-    subscriptionRef.current ||
-    startingGenerationRef.current === generation
-  ) {
+  if (startingGenerationRef.current === generation) {
+    return;
+  }
+
+  // Foreground GPS is already running. Background access
+  // may have just been granted, so try to start it again.
+  if (subscriptionRef.current) {
+    startBackgroundTracking(generation);
     return;
   }
 
@@ -202,8 +257,9 @@ const startTracking = useCallback(async () => {
   try {
     setError(null);
 
+    // The driver screen owns the permission prompts.
     const granted =
-      await ensureForegroundLocationPermission();
+      await hasForegroundLocationPermission();
 
     if (!stillCurrent()) {
       return;
@@ -280,60 +336,7 @@ const startTracking = useCallback(async () => {
 
    
     // 4. START BACKGROUND TRACKING SEPARATELY
-   
-
-    setBackgroundStatus("starting");
-
-    void queueBackgroundOperation(async () => {
-      
-      if (!stillCurrent()) {
-        return;
-      }
-
-      await startBackgroundLocationTracking();
-    })
-      .then(async () => {
-        const running =
-          await isBackgroundLocationTracking();
-
-        
-        if (
-          !mountedRef.current ||
-          !activeRef.current ||
-          generationRef.current !== generation
-        ) {
-          return;
-        }
-
-        setBackgroundStatus(
-          running ? "active" : "unavailable",
-        );
-
-        setBackgroundPermissionGranted(running);
-
-        console.log(
-          "[Location] Background tracking status:",
-          running ? "active" : "unavailable",
-        );
-      })
-      .catch((err) => {
-        console.warn(
-          "[Location] Background tracking unavailable:",
-          err,
-        );
-
-        if (
-          !mountedRef.current ||
-          !activeRef.current ||
-          generationRef.current !== generation
-        ) {
-          return;
-        }
-
-        setBackgroundStatus("unavailable");
-        setBackgroundPermissionGranted(false);
-
-      });
+    startBackgroundTracking(generation);
 
   } catch (err) {
     console.error(
@@ -358,7 +361,12 @@ const startTracking = useCallback(async () => {
       startingGenerationRef.current = null;
     }
   }
-}, [intervalMs, distanceInterval, sendLocation]);
+}, [
+  intervalMs,
+  distanceInterval,
+  sendLocation,
+  startBackgroundTracking,
+]);
 
  
   const stopTracking = useCallback(async () => {
