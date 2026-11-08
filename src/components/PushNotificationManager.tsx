@@ -23,13 +23,15 @@ export default function PushNotificationManager() {
   const { user } = useAuth();
 
   const userId = user?.id ?? null;
-  const isDriver = user?.role === "driver";
+  const canReceivePush =
+  user?.role === "driver" ||
+  user?.role === "supervisor";
   const isActive = user?.isActive === true;
 
   useEffect(() => {
-    if (!userId || !isDriver || !isActive) {
-      return;
-    }
+   if (!userId || !canReceivePush || !isActive) {
+  return;
+}
 
     let cancelled = false;
     let registering = false;
@@ -116,7 +118,7 @@ export default function PushNotificationManager() {
       cancelled = true;
       subscription.remove();
     };
-  }, [userId, isDriver, isActive]);
+  }, [userId, canReceivePush, isActive]);
 
   return null;
 }
