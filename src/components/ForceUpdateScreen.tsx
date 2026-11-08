@@ -17,6 +17,8 @@ import {
   type VersionPolicy,
 } from "../services/appVersion";
 
+import { startPlayStoreUpdate } from "../services/playStoreUpdate";
+
 const COLORS = {
   black: "#0A090C",
   light: "#F0EDEE",
@@ -64,6 +66,12 @@ export default function ForceUpdateScreen(props: Props) {
     if (isOTA) return;
 
     setMessage("");
+
+    // Prefer Google Play's in-app update flow (downloads and
+    // installs without leaving the app). Fall back to the listing.
+    if (await startPlayStoreUpdate()) {
+      return;
+    }
 
     try {
       await Linking.openURL(
