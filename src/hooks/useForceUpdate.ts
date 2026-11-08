@@ -17,8 +17,11 @@ import { api } from "../api/client";
 
 import {
   isUpdateRequired,
+  PLAY_STORE_URL,
   type VersionPolicy,
 } from "../services/appVersion";
+
+import { checkPlayStoreUpdate } from "../services/playStoreUpdate";
 
 import {
   getRequiredUpdate,
@@ -72,20 +75,40 @@ export function useForceUpdate() {
       lastCheckRef.current = now;
 
       try {
-        const response = await api.get<{
-          success: boolean;
-          data: {
-            android: VersionPolicy;
-          };
-        }>("/app/version");
-
-        const policy = response.data.data.android;
+        // Backend policy and Play Store check run in parallel.
+        // Either one can require an update.
+        const [backendResult, storeUpdate] =
+          await Promise.all([
+            api
+              .get<{
+                success: boolean;
+                data: {
+                  android: VersionPolicy;
+                };
+              }>("/app/version")
+              .then(
+                (response) => ({
+                  ok: true as const,
+                  policy: response.data.data.android,
+                }),
+                (error: unknown) => ({
+                  ok: false as const,
+                  error,
+                })
+              ),
+            checkPlayStoreUpdate(),
+          ]);
 
         if (!mountedRef.current) {
           return;
         }
 
-        if (isUpdateRequired(policy)) {
+        const policy = backendResult.ok
+          ? backendResult.policy
+          : undefined;
+
+        // 1. Backend minimum version (manual kill switch).
+        if (policy && isUpdateRequired(policy)) {
           setState({
             status: "required",
             policy,
@@ -94,12 +117,31 @@ export function useForceUpdate() {
           return;
         }
 
+        // 2. A newer build is live on Google Play.
+        if (storeUpdate) {
+          setState({
+            status: "required",
+            policy: {
+              latestVersionCode:
+                storeUpdate.storeVersionCode,
+              minimumVersionCode:
+                storeUpdate.storeVersionCode,
+              forceUpdate: true,
+              storeUrl:
+                policy?.storeUrl || PLAY_STORE_URL,
+            },
+          });
+
+          return;
+        }
+
+        // 3. An API / socket call was rejected with 426.
         const required = getRequiredUpdate();
 
         if (
           required &&
           isUpdateRequired(required) &&
-          policy.forceUpdate
+          policy?.forceUpdate
         ) {
           setState({
             status: "required",
@@ -107,6 +149,10 @@ export function useForceUpdate() {
           });
 
           return;
+        }
+
+        if (!backendResult.ok) {
+          throw backendResult.error;
         }
 
         clearRequiredUpdate();
