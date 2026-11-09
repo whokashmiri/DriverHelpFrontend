@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -41,6 +43,12 @@ import { useLocationTracking } from "../../hooks/useLocationTracking";
 import { useShift } from "../../hooks/useShift";
 
 import { useLanguage } from "../../context/LanguageContext";
+
+import {
+  canRequestAlwaysLocationPermission,
+  hasAlwaysLocationPermission,
+  requestAlwaysLocationPermission,
+} from "../../services/backgroundLocation";
 
 import type {
   Order,
@@ -144,7 +152,119 @@ const {
   isEnding,
 } = useShift(language);
 
-const MIN_SHIFT_SECONDS = 1 * 60;
+const { startTracking } = useLocationTracking({
+  enabled: isWorking,
+  ready: isShiftReady,
+  intervalMs: 3000,
+  distanceInterval: 3,
+});
+
+const locationPromptActiveRef = useRef(false);
+
+const requireAlwaysLocation = useCallback(async () => {
+  if (await hasAlwaysLocationPermission()) {
+    return true;
+  }
+
+  if (locationPromptActiveRef.current) {
+    return false;
+  }
+
+  locationPromptActiveRef.current = true;
+
+  const confirm = (message: string, confirmLabel: string) =>
+    new Promise<boolean>((resolve) => {
+      Alert.alert(
+        t("location.alwaysRequiredTitle", "Allow location all the time"),
+        message,
+        [
+          {
+            text: t("location.notNow", "Not now"),
+            style: "cancel",
+            onPress: () => resolve(false),
+          },
+          {
+            text: confirmLabel,
+            onPress: () => resolve(true),
+          },
+        ],
+        { cancelable: false },
+      );
+    });
+
+  try {
+    if (await canRequestAlwaysLocationPermission()) {
+      const accepted = await confirm(
+        t(
+          "location.alwaysRequiredMessage",
+          "Spark Go shares your live location with your supervisor during your shift, including when the app is closed or not in use. Choose \"Allow all the time\" on the next screen.",
+        ),
+        t("location.continue", "Continue"),
+      );
+
+      if (!accepted) {
+        return false;
+      }
+
+      if (await requestAlwaysLocationPermission()) {
+        return true;
+      }
+    }
+
+    const openSettings = await confirm(
+      t(
+        "location.alwaysDeniedMessage",
+        "Location is not set to \"Allow all the time\". Open Settings, go to Permissions > Location, and choose \"Allow all the time\".",
+      ),
+      t("location.openSettings", "Open Settings"),
+    );
+
+    if (openSettings) {
+      await Linking.openSettings();
+    }
+
+    return false;
+  } finally {
+    locationPromptActiveRef.current = false;
+  }
+}, [t]);
+
+/*
+ * During a shift, check again whenever the app returns
+ * to the foreground, because the driver can change the
+ * permission in Settings at any time.
+ */
+useEffect(() => {
+  if (!isWorking || !isShiftReady) {
+    return;
+  }
+
+  const checkPermission = () => {
+    void requireAlwaysLocation()
+      .then((granted) => {
+        if (granted) {
+          void startTracking();
+        }
+      })
+      .catch((error) => {
+        console.warn("[Location] Permission check failed:", error);
+      });
+  };
+
+  checkPermission();
+
+  const listener = AppState.addEventListener("change", (state) => {
+    if (state === "active") {
+      checkPermission();
+    }
+  });
+
+  return () => {
+    listener.remove();
+  };
+}, [isWorking, isShiftReady, requireAlwaysLocation, startTracking]);
+
+const MIN_SHIFT_SECONDS = 30 * 60;
 
 const shiftElapsedSeconds = timer
   .split(":")
@@ -426,6 +546,10 @@ const loadOrders = useCallback(async () => {
 
   const handleStartShift = async () => {
     try {
+      if (!(await requireAlwaysLocation())) {
+        return;
+      }
+
       await startShift();
     } catch {
       // handled by hook

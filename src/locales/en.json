@@ -333,7 +333,13 @@
     "longitude": "Longitude",
 
     "loading": "Loading locations...",
-    "unavailable": "Location unavailable"
+    "unavailable": "Location unavailable",
+    "alwaysRequiredTitle": "Allow location all the time",
+    "alwaysRequiredMessage": "Spark Go shares your live location with your supervisor during your shift, including when the app is closed or not in use. Choose \"Allow all the time\" on the next screen.",
+    "alwaysDeniedMessage": "Location is not set to \"Allow all the time\". Open Settings, go to Permissions > Location, and choose \"Allow all the time\".",
+    "notNow": "Not now",
+    "continue": "Continue",
+    "openSettings": "Open Settings"
   },
 
 
