@@ -8,11 +8,11 @@ export const BACKGROUND_LOCATION_TASK =
   "TOSH_BACKGROUND_LOCATION_TASK";
 
 // Production
-// const API_URL =
-//   "https://driverhelp.167.71.231.64.nip.io/api";
+const API_URL =
+  "https://driverhelp.167.71.231.64.nip.io/api";
 
 // Local development:
-const API_URL = "http://192.168.0.138:9000/api";
+// const API_URL = "http://192.168.0.138:9000/api";
 
 const LOCATION_URL = `${API_URL}/locations/me`;
 
