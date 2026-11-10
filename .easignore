@@ -1,46 +1,57 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
+
 node_modules/
 
 # Expo
+
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+.env
 
 # Native
+
 .kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+_.orig._
+_.jks
+_.p8
+_.p12
+_.key
+\*.mobileprovision
 spark-go-ad28b-firebase-adminsdk-fbsvc-cfa678cd7b.json
-# google-services.json  (must be uploaded to EAS - do not ignore here)
+
+# google-services.json (must be uploaded to EAS - do not ignore here)
 
 # Metro
-.metro-health-check*
+
+.metro-health-check\*
 
 # debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+
+npm-debug._
+yarn-debug._
+yarn-error.\*
 
 # macOS
+
 .DS_Store
-*.pem
+\*.pem
 
 # local env files
-.env*.local
+
+.env\*.local
 
 # typescript
-*.tsbuildinfo
+
+\*.tsbuildinfo
 
 example
 
 # generated native folders
+
 /ios
 /android
 .env
