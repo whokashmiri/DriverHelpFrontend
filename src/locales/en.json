@@ -216,7 +216,10 @@
     "timeWorked": "Time worked",
     "getSomeRest": "End Shift",
     "continueWorking": "Continue Working",
-    "autoFinished": "Your shift was automatically finished at the end of the day"
+    "autoFinished": "Your shift was automatically finished at the end of the day",
+    "targetNotReached":"Daily Delivery Target Not Reached",
+    "targetWarning":"You haven't completed today's delivery target.",
+    "finishAnyway":"You can still end your shift."
   },
 
   "filters": {
