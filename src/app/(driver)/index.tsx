@@ -112,11 +112,8 @@ function getFriendlyOrderError(error: unknown, fallback: string) {
     return "The request took too long. Please try again.";
   }
 
-  if (
-    normalized.includes("complete the current order") ||
-    normalized.includes("active order")
-  ) {
-    return "You already have an active delivery. Complete or cancel it before creating another pickup.";
+  if (normalized.includes("active order not found")) {
+    return "This delivery is no longer active. The list has been refreshed.";
   }
 
   /*
@@ -156,7 +153,7 @@ const { startTracking } = useLocationTracking({
   enabled: isWorking,
   ready: isShiftReady,
   intervalMs: 3000,
-  distanceInterval: 3,
+  distanceInterval: 0,
 });
 
 const locationPromptActiveRef = useRef(false);
@@ -277,7 +274,11 @@ const canEndShift =
   shiftElapsedSeconds >= MIN_SHIFT_SECONDS;
 
 
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  /*
+   * A driver can hold several active deliveries
+   * (pickup photo taken, delivery photo pending).
+   */
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
 
   const [orders, setOrders] = useState<Order[]>([]);
 
@@ -301,6 +302,8 @@ const canEndShift =
     OrderPhotoInput[]
   >([]);
 
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
 
   const [isPreparingCancellationPhotos, setIsPreparingCancellationPhotos] =
@@ -310,9 +313,15 @@ const canEndShift =
 
   const [shiftFilter, setShiftFilter] = useState<DateFilter>("today");
 
+  // Pickup photo for the order currently being created.
   const [pickupPhoto, setPickupPhoto] = useState<OrderPhotoInput | null>(null);
 
+  // Delivery photo being uploaded, and which order it belongs to.
   const [deliveryPhoto, setDeliveryPhoto] = useState<OrderPhotoInput | null>(
+    null,
+  );
+
+  const [deliveringOrderId, setDeliveringOrderId] = useState<string | null>(
     null,
   );
 
@@ -344,94 +353,71 @@ const [checkingShiftEnd, setCheckingShiftEnd] = useState(false);
 
   const [isOpeningCamera, setIsOpeningCamera] = useState(false);
   const [cameraType, setCameraType] = useState<"pickup" | "delivery" | null>(null);
+  const [cameraOrderId, setCameraOrderId] = useState<string | null>(null);
   const [cameraPermissionGranted, setCameraPermissionGranted] = useState(false);
 
-  const recoverActiveOrder = useCallback(async () => {
-  try {
+  /*
+   * Fetch all active deliveries from the server.
+   * Supports both the new `orders` array and the
+   * legacy single `order` response.
+   */
+  const fetchActiveOrders = useCallback(async () => {
     const response = await getActiveOrder();
-    const active = response.order;
 
-    if (!active?._id) {
-      return false;
-    }
+    const list = Array.isArray(response.orders)
+      ? response.orders
+      : response.order
+        ? [response.order]
+        : [];
 
-    setActiveOrder(active);
-
-    setPickupPhoto(
-      active.pickupPhoto?.url
-        ? {
-            uri: active.pickupPhoto.url,
-            time: safeDate(
-              active.pickupPhoto.takenAt ||
-              active.pickupTime,
-            ),
-          }
-        : null,
+    return list.filter(
+      (order) => order?._id && order.status === "picked_up",
     );
+  }, []);
 
-    setDeliveryPhoto(null);
-    setOrderNotes(active.notes ?? "");
+  /*
+   * After a failed pickup upload, the server may still
+   * have created the order (e.g. response timed out).
+   * Reload active orders and check for one whose pickup
+   * time matches the captured photo.
+   */
+  const recoverPickupOrder = useCallback(
+    async (capturedPhoto: OrderPhotoInput) => {
+      try {
+        const list = await fetchActiveOrders();
 
-    return true;
-  } catch (error) {
-    console.error(
-      "[ORDER] Failed to recover active order:",
-      error,
-    );
+        setActiveOrders(list);
 
-    return false;
-  }
-}, []);
+        const capturedTime = capturedPhoto.time.getTime();
+
+        return list.some((order) => {
+          const pickupTime = new Date(order.pickupTime).getTime();
+
+          return (
+            Number.isFinite(pickupTime) &&
+            Math.abs(pickupTime - capturedTime) < 1000
+          );
+        });
+      } catch (error) {
+        console.error("[ORDER] Failed to recover active order:", error);
+
+        return false;
+      }
+    },
+    [fetchActiveOrders],
+  );
 
 
 const loadOrders = useCallback(async () => {
   setIsLoadingOrder(true);
 
   try {
-    // Load active order independently
-    const activeResponse = await getActiveOrder();
-    const active = activeResponse.order;
+    // Load active orders independently
+    const list = await fetchActiveOrders();
 
-    setActiveOrder(active);
+    setActiveOrders(list);
 
-    if (active?._id) {
-      setOrderNotes(active.notes ?? "");
-
-      setPickupPhoto(
-        active.pickupPhoto?.url
-          ? {
-              uri: active.pickupPhoto.url,
-              time: safeDate(
-                active.pickupPhoto.takenAt ||
-                active.pickupTime,
-              ),
-            }
-          : null,
-      );
-
-      setDeliveryPhoto(
-        active.deliveryPhoto?.url
-          ? {
-              uri: active.deliveryPhoto.url,
-              time: safeDate(
-                active.deliveryPhoto.takenAt ||
-                active.deliveryTime,
-              ),
-            }
-          : null,
-      );
-
-      console.log(
-        "[ORDER] Active order loaded:",
-        active._id,
-      );
-    } else {
-      setPickupPhoto(null);
-      setDeliveryPhoto(null);
-      setOrderNotes("");
-      setOrderElapsedSeconds(0);
-      setNotesExpanded(false);
-    }
+    console.log("[ORDER] Active orders loaded:", list.length);
 
     setOrderError(null);
   } catch (error) {
@@ -464,7 +450,7 @@ const loadOrders = useCallback(async () => {
   } finally {
     setIsLoadingOrder(false);
   }
-}, [t]);
+}, [t, fetchActiveOrders]);
 
 
   const loadShifts = useCallback(async () => {
@@ -511,14 +497,13 @@ const loadOrders = useCallback(async () => {
   }, [tab, loadShifts, loadStats]);
 
   /*
-   * Live order timer.
+   * Timer for the order being created (while
+   * the pickup photo uploads). Active orders
+   * run their own timers.
    */
   useEffect(() => {
-    const pickupStart = activeOrder?.pickupTime
-      ? new Date(activeOrder.pickupTime).getTime()
-      : uploadingPickup && pickupPhoto?.time
-        ? pickupPhoto.time.getTime()
-        : null;
+    const pickupStart =
+      uploadingPickup && pickupPhoto?.time ? pickupPhoto.time.getTime() : null;
 
     if (!pickupStart) {
       setOrderElapsedSeconds(0);
@@ -542,7 +527,7 @@ const loadOrders = useCallback(async () => {
     return () => {
       clearInterval(interval);
     };
-  }, [activeOrder, uploadingPickup, pickupPhoto?.time]);
+  }, [uploadingPickup, pickupPhoto?.time]);
 
   const handleStartShift = async () => {
     try {
@@ -680,7 +665,10 @@ const handleEndShift = async () => {
   }
 };
 
-  const takeOrderPhoto = async (type: "pickup" | "delivery") => {
+  const takeOrderPhoto = async (
+    type: "pickup" | "delivery",
+    orderId?: string,
+  ) => {
     if (
       cameraOpeningRef.current ||
       uploadingPickup ||
@@ -693,21 +681,14 @@ const handleEndShift = async () => {
     setOrderError(null);
 
     if (type === "pickup") {
-      if (activeOrder) {
-        setOrderError(
-          t(
-            "orders.activeOrderExists",
-            "Complete or cancel the current delivery before creating another pickup.",
-          ),
-        );
-        return;
-      }
-
       if (!isWorking) {
         setOrderError(t("driver.startShiftFirst", "Start your shift first"));
         return;
       }
-    } else if (!activeOrder?._id) {
+    } else if (
+      !orderId ||
+      !activeOrders.some((order) => order._id === orderId)
+    ) {
       setOrderError(
         t("orders.noActiveOrder", "There is no active delivery to complete."),
       );
@@ -730,6 +711,7 @@ const handleEndShift = async () => {
         );
         return;
       }
+      setCameraOrderId(type === "delivery" ? orderId ?? null : null);
       setCameraType(type);
     } catch (error) {
       setOrderError(getFriendlyOrderError(error, "Unable to access the camera."));
@@ -743,6 +725,7 @@ const handleEndShift = async () => {
     if (uploadingPickup || uploadingDelivery) return;
     cameraOpeningRef.current = false;
     setCameraType(null);
+    setCameraOrderId(null);
     setIsOpeningCamera(false);
   };
 
@@ -750,6 +733,7 @@ const handleEndShift = async () => {
   // Do not compress it again before uploading.
   const handleCameraPhotoReady = (photo: DriverCameraPhoto) => {
     const type = cameraType;
+    const targetOrderId = cameraOrderId;
     if (!type) return;
 
     // A timestamp belongs to this captured/selected photo, not to upload completion.
@@ -760,10 +744,11 @@ const handleEndShift = async () => {
 
     cameraOpeningRef.current = false;
     setCameraType(null);
+    setCameraOrderId(null);
     setIsOpeningCamera(false);
 
     if (type === "pickup") {
-      if (!isWorking || activeOrder || uploadingPickup || uploadingDelivery) {
+      if (!isWorking || uploadingPickup || uploadingDelivery) {
         return;
       }
       setPickupPhoto(capturedPhoto);
@@ -772,10 +757,25 @@ const handleEndShift = async () => {
       return;
     }
 
-    if (!activeOrder?._id || uploadingPickup || uploadingDelivery) return;
+    if (
+      !targetOrderId ||
+      !activeOrders.some((order) => order._id === targetOrderId) ||
+      uploadingPickup ||
+      uploadingDelivery
+    ) {
+      return;
+    }
     setDeliveryPhoto(capturedPhoto);
+    setDeliveringOrderId(targetOrderId);
     setUploadingDelivery(true);
-    void processDeliveryInBackground(capturedPhoto);
+    void processDeliveryInBackground(targetOrderId, capturedPhoto);
+  };
+
+  const resetNewOrderForm = () => {
+    setPickupPhoto(null);
+    setOrderNotes("");
+    setNotesExpanded(false);
+    setOrderElapsedSeconds(0);
   };
 
   const processPickupInBackground = async (capturedPhoto: OrderPhotoInput) => {
@@ -790,7 +790,12 @@ const handleEndShift = async () => {
 
       const createdOrder = response.order;
 
-      setActiveOrder(createdOrder);
+      // Newest active delivery first.
+      setActiveOrders((current) => [
+        createdOrder,
+
+        ...current.filter((order) => order._id !== createdOrder._id),
+      ]);
 
       setOrders((current) => [
         createdOrder,
@@ -798,32 +803,16 @@ const handleEndShift = async () => {
         ...current.filter((order) => order._id !== createdOrder._id),
       ]);
 
-      setOrderNotes(createdOrder.notes ?? orderNotes);
-
-      /*
-       * Replace local compressed URI
-       * with permanent server image URL.
-       */
-      if (createdOrder.pickupPhoto?.url) {
-        setPickupPhoto({
-          uri: createdOrder.pickupPhoto.url,
-
-          time: safeDate(
-            createdOrder.pickupPhoto.takenAt || createdOrder.pickupTime,
-          ),
-        });
-      }
-
-      setDeliveryPhoto(null);
-
-      setOrderElapsedSeconds(0);
+      // New Order card is ready for the next pickup.
+      resetNewOrderForm();
     } catch (error) {
   console.error("[PICKUP] Upload failed:", error);
 
-  const recovered = await recoverActiveOrder();
+  const recovered = await recoverPickupOrder(capturedPhoto);
 
   if (recovered) {
     setOrderError(null);
+    resetNewOrderForm();
     return;
   }
 
@@ -844,22 +833,15 @@ const handleEndShift = async () => {
   };
 
   const processDeliveryInBackground = async (
+    orderId: string,
     capturedPhoto: OrderPhotoInput,
   ) => {
-    const currentOrder = activeOrder;
-
-    if (!currentOrder?._id) {
-      setUploadingDelivery(false);
-
-      return;
-    }
-
     try {
       setOrderError(null);
 
       // Photo is already compressed by DriverCamera.
       const response = await completeOrderDelivery({
-        orderId: currentOrder._id,
+        orderId,
         deliveryPhoto: capturedPhoto,
       });
 
@@ -871,39 +853,34 @@ const handleEndShift = async () => {
         ...current.filter((order) => order._id !== completedOrder._id),
       ]);
 
-      setOrderElapsedSeconds(completedOrder.durationSeconds ?? 0);
-
       /*
-       * Only clear active order after
-       * backend confirms delivery.
-       *
-       * This prevents a new pickup being
-       * created while delivery is still
-       * uploading.
+       * Only remove the active order after
+       * the backend confirms delivery.
        */
-      setActiveOrder(null);
-
-      setPickupPhoto(null);
-
-      setDeliveryPhoto(null);
-
-      setOrderNotes("");
-
-      setNotesExpanded(false);
+      setActiveOrders((current) =>
+        current.filter((order) => order._id !== orderId),
+      );
     } catch (error) {
       /*
-       * Roll back delivery photo because
-       * backend never completed the order.
+       * Backend never completed the order;
+       * keep it active and show the error.
        */
-      setDeliveryPhoto(null);
-
       setOrderError(
-        getErrorMessage(
+        getFriendlyOrderError(
           error,
           t("orders.deliveryUploadFailed", "Unable to complete delivery"),
         ),
       );
+
+      // If the server says it's no longer active, resync.
+      if (getErrorMessage(error, "").toLowerCase().includes("active order not found")) {
+        void fetchActiveOrders()
+          .then(setActiveOrders)
+          .catch(() => undefined);
+      }
     } finally {
+      setDeliveryPhoto(null);
+      setDeliveringOrderId(null);
       setUploadingDelivery(false);
     }
   };
@@ -916,10 +893,12 @@ const handleEndShift = async () => {
     );
   };
 
-  const openCancelOrder = () => {
-    if (!activeOrder) {
+  const openCancelOrder = (orderId: string) => {
+    if (!activeOrders.some((order) => order._id === orderId)) {
       return;
     }
+
+    setCancelOrderId(orderId);
 
     setCancellationReason(null);
 
@@ -939,7 +918,9 @@ const handleEndShift = async () => {
   };
 
   const handleCancelOrder = async () => {
-    if (!activeOrder?._id) {
+    const orderId = cancelOrderId;
+
+    if (!orderId || !activeOrders.some((order) => order._id === orderId)) {
       return;
     }
 
@@ -976,7 +957,7 @@ const handleEndShift = async () => {
       setOrderError(null);
 
       const response = await cancelOrder({
-        orderId: activeOrder._id,
+        orderId,
 
         cancellationReason,
 
@@ -995,17 +976,11 @@ const handleEndShift = async () => {
         ...current.filter((order) => order._id !== cancelledOrder._id),
       ]);
 
-      setActiveOrder(null);
+      setActiveOrders((current) =>
+        current.filter((order) => order._id !== orderId),
+      );
 
-      setPickupPhoto(null);
-
-      setDeliveryPhoto(null);
-
-      setOrderNotes("");
-
-      setOrderElapsedSeconds(0);
-
-      setNotesExpanded(false);
+      setCancelOrderId(null);
 
       setCancellationReason(null);
 
@@ -1057,16 +1032,16 @@ const handleEndShift = async () => {
             <View style={styles.homeContent}>
               <RecentOrders
                 orders={orders}
-                activeOrder={activeOrder}
                 language={language}
                 expandedOrderId={expandedOrderId}
                 setExpandedOrderId={setExpandedOrderId}
               />
 
+              {/* NEW ORDER (always available while working) */}
               <InlineOrderCreator
-                activeOrder={activeOrder}
+                activeOrder={null}
                 pickupPhoto={pickupPhoto}
-                deliveryPhoto={deliveryPhoto}
+                deliveryPhoto={null}
                 elapsedSeconds={orderElapsedSeconds}
                 notes={orderNotes}
                 setNotes={setOrderNotes}
@@ -1074,14 +1049,39 @@ const handleEndShift = async () => {
                 setNotesExpanded={setNotesExpanded}
                 uploadingPickup={uploadingPickup}
                 isOpeningCamera={isOpeningCamera}
-                uploadingDelivery={uploadingDelivery}
+                uploadingDelivery={false}
+                busy={uploadingDelivery}
                 isWorking={isWorking}
                 error={orderError}
                 onPickup={() => void takeOrderPhoto("pickup")}
-                onDelivery={() => void takeOrderPhoto("delivery")}
-                onCancelOrder={openCancelOrder}
+                onDelivery={() => undefined}
+                onCancelOrder={() => undefined}
                 onDismissError={() => setOrderError(null)}
               />
+
+              {/* ACTIVE DELIVERIES */}
+              {activeOrders.length > 0 && (
+                <Text style={styles.sectionTitle}>
+                  {t("driver.activeDeliveries", "Active Deliveries")} (
+                  {activeOrders.length})
+                </Text>
+              )}
+
+              {activeOrders.map((order) => (
+                <ActiveOrderCard
+                  key={order._id}
+                  order={order}
+                  deliveryPhoto={
+                    deliveringOrderId === order._id ? deliveryPhoto : null
+                  }
+                  uploadingDelivery={deliveringOrderId === order._id}
+                  busy={uploadingPickup || uploadingDelivery}
+                  isOpeningCamera={isOpeningCamera}
+                  isWorking={isWorking}
+                  onDelivery={() => void takeOrderPhoto("delivery", order._id)}
+                  onCancelOrder={() => openCancelOrder(order._id)}
+                />
+              ))}
 
               <ShiftControl
                 isWorking={isWorking}
@@ -1099,7 +1099,7 @@ const handleEndShift = async () => {
           {tab === "orders" && (
             <OrdersPanel
               orders={orders}
-              activeOrder={activeOrder}
+              activeOrderIds={activeOrders.map((order) => order._id)}
               language={language}
               expandedOrderId={expandedOrderId}
               setExpandedOrderId={setExpandedOrderId}
@@ -1289,6 +1289,7 @@ function InlineOrderCreator({
   uploadingPickup,
   uploadingDelivery,
   isOpeningCamera,
+  busy = false,
   isWorking,
   error,
   onPickup,
@@ -1298,6 +1299,9 @@ function InlineOrderCreator({
 }: {
   activeOrder: Order | null;
   onCancelOrder: () => void;
+
+  /** Another order is uploading; lock this card's actions. */
+  busy?: boolean;
 
   pickupPhoto: OrderPhotoInput | null;
 
@@ -1328,28 +1332,8 @@ function InlineOrderCreator({
 }) {
   const { t } = useTranslation();
 
-  const isBusy = uploadingPickup || uploadingDelivery || isOpeningCamera;
-
-  
-useEffect(() => {
-  console.log("[DELIVERY BUTTON STATE]", {
-    activeOrderId: activeOrder?._id ?? null,
-    uploadingPickup,
-    uploadingDelivery,
-    isOpeningCamera,
-    disabled:
-      !activeOrder?._id ||
-      uploadingPickup ||
-      uploadingDelivery ||
-      isOpeningCamera,
-  });
-}, [
-  activeOrder?._id,
-  uploadingPickup,
-  uploadingDelivery,
-  isOpeningCamera,
-]);
-
+  const isBusy =
+    busy || uploadingPickup || uploadingDelivery || isOpeningCamera;
 
   return (
     <View style={styles.inlineOrderCard}>
@@ -1425,12 +1409,7 @@ useEffect(() => {
           title={t("orders.deliveryPhoto", "Delivery")}
           photo={deliveryPhoto}
           loading={uploadingDelivery}
-          disabled={
-  !activeOrder?._id ||
-  uploadingPickup ||
-  uploadingDelivery ||
-  isOpeningCamera
-}
+          disabled={!activeOrder?._id || isBusy}
           onPress={onDelivery}
         />
       </View>
@@ -1490,6 +1469,91 @@ useEffect(() => {
         </Text>
       )}
     </View>
+  );
+}
+
+/*
+ * One card per active delivery. Wraps InlineOrderCreator
+ * with its own live timer and notes toggle.
+ */
+function ActiveOrderCard({
+  order,
+  deliveryPhoto,
+  uploadingDelivery,
+  busy,
+  isOpeningCamera,
+  isWorking,
+  onDelivery,
+  onCancelOrder,
+}: {
+  order: Order;
+
+  deliveryPhoto: OrderPhotoInput | null;
+
+  uploadingDelivery: boolean;
+
+  busy: boolean;
+
+  isOpeningCamera: boolean;
+
+  isWorking: boolean;
+
+  onDelivery: () => void;
+
+  onCancelOrder: () => void;
+}) {
+  const [notesExpanded, setNotesExpanded] = useState(false);
+
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  const pickupStart = new Date(order.pickupTime).getTime();
+
+  useEffect(() => {
+    if (!Number.isFinite(pickupStart)) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const update = () =>
+      setElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - pickupStart) / 1000)),
+      );
+
+    update();
+
+    const interval = setInterval(update, 1000);
+
+    return () => clearInterval(interval);
+  }, [pickupStart]);
+
+  const pickupPhoto: OrderPhotoInput | null = order.pickupPhoto?.url
+    ? {
+        uri: order.pickupPhoto.url,
+        time: safeDate(order.pickupPhoto.takenAt || order.pickupTime),
+      }
+    : null;
+
+  return (
+    <InlineOrderCreator
+      activeOrder={order}
+      pickupPhoto={pickupPhoto}
+      deliveryPhoto={deliveryPhoto}
+      elapsedSeconds={elapsedSeconds}
+      notes={order.notes ?? ""}
+      setNotes={() => undefined}
+      notesExpanded={notesExpanded}
+      setNotesExpanded={setNotesExpanded}
+      uploadingPickup={false}
+      uploadingDelivery={uploadingDelivery}
+      isOpeningCamera={isOpeningCamera}
+      busy={busy}
+      isWorking={isWorking}
+      error={null}
+      onPickup={() => undefined}
+      onDelivery={onDelivery}
+      onCancelOrder={onCancelOrder}
+      onDismissError={() => undefined}
+    />
   );
 }
 
@@ -1998,14 +2062,11 @@ function CancelOrderModal({
 
 function RecentOrders({
   orders,
-  activeOrder,
   language,
   expandedOrderId,
   setExpandedOrderId,
 }: {
   orders: Order[];
-
-  activeOrder: Order | null;
 
   language: "ar" | "en";
 
@@ -2016,9 +2077,7 @@ function RecentOrders({
   const { t } = useTranslation();
 
   const completedOrders = orders
-    .filter(
-      (order) => order.status === "delivered" && order._id !== activeOrder?._id,
-    )
+    .filter((order) => order.status === "delivered")
     .slice(0, 5);
 
   if (completedOrders.length === 0) {
@@ -2115,7 +2174,7 @@ function OrderStatusFilterBar({
 
 function OrdersPanel({
   orders,
-  activeOrder,
+  activeOrderIds,
   language,
   expandedOrderId,
   setExpandedOrderId,
@@ -2127,7 +2186,7 @@ function OrdersPanel({
 }: {
   orders: Order[];
 
-  activeOrder: Order | null;
+  activeOrderIds: string[];
 
   language: "ar" | "en";
 
@@ -2188,7 +2247,7 @@ function OrdersPanel({
         </Text>
       ) : (
         filteredOrders.map((order) => {
-          const active = activeOrder?._id === order._id;
+          const active = activeOrderIds.includes(order._id);
 
           if (active) {
             return (

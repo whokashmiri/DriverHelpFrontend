@@ -10,6 +10,7 @@ import {
   connectSocket,
   emitDriverLocation,
   isSocketConnected,
+  onLocationRequest,
   pauseSocket
 } from "../socket/socket";
 
@@ -39,6 +40,9 @@ type BackgroundTrackingStatus =
   | "active"
   | "unavailable";
 
+// Max time between foreground sends while stationary.
+const HEARTBEAT_MS = 15000;
+
 let backgroundOperationQueue: Promise<void> = Promise.resolve();
 
 function queueBackgroundOperation(
@@ -57,7 +61,7 @@ export function useLocationTracking({
   enabled,
   ready = true,
   intervalMs = 3000,
-  distanceInterval = 3,
+  distanceInterval = 0,
 }: UseLocationTrackingOptions) {
   const [isTracking, setIsTracking] = useState(false);
 
@@ -80,6 +84,16 @@ export function useLocationTracking({
 
   const sendingRef = useRef(false);
 
+  // Newest point received while another was being sent.
+  const pendingLocationRef =
+    useRef<Location.LocationObject | null>(null);
+
+  // Time of the last successful socket delivery.
+  const lastSentAtRef = useRef(0);
+
+  const heartbeatRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
+
 
   const generationRef = useRef(0);
 
@@ -98,9 +112,23 @@ export function useLocationTracking({
       if (
         !mountedRef.current ||
         !activeRef.current ||
-        AppState.currentState !== "active" ||
-        sendingRef.current
+        AppState.currentState !== "active"
       ) {
+        return;
+      }
+
+      /*
+       * Keep only the newest point while a send is in
+       * flight, and send it right after. Previously these
+       * points were dropped, so the map could lag behind.
+       */
+      if (sendingRef.current) {
+        const pending = pendingLocationRef.current;
+
+        if (!pending || location.timestamp > pending.timestamp) {
+          pendingLocationRef.current = location;
+        }
+
         return;
       }
 
@@ -143,6 +171,8 @@ console.log("[GPS] Socket ACK:", {
   recordedAt: acknowledgement.recordedAt,
 });
 
+        lastSentAtRef.current = Date.now();
+
 
         if (mountedRef.current) {
           setError(null);
@@ -155,10 +185,26 @@ console.log("[GPS] Socket ACK:", {
         }
       } finally {
         sendingRef.current = false;
+
+        const next = pendingLocationRef.current;
+        pendingLocationRef.current = null;
+
+        if (
+          next &&
+          next.timestamp > location.timestamp &&
+          mountedRef.current &&
+          activeRef.current
+        ) {
+          void sendLocationRef.current?.(next);
+        }
       }
     },
     [],
   );
+
+  const sendLocationRef =
+    useRef<typeof sendLocation | null>(null);
+  sendLocationRef.current = sendLocation;
 
 
   const stopForegroundTracking = useCallback(() => {
@@ -166,6 +212,13 @@ console.log("[GPS] Socket ACK:", {
 
     subscriptionRef.current?.remove();
     subscriptionRef.current = null;
+
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+
+    pendingLocationRef.current = null;
 
 
     if (mountedRef.current) {
@@ -308,6 +361,42 @@ const startTracking = useCallback(async () => {
 
     subscriptionRef.current = subscription;
     setIsTracking(true);
+
+    /*
+     * HEARTBEAT
+     *
+     * Some devices still pause watchPosition callbacks
+     * while the phone is not moving. If nothing was sent
+     * recently, request a fresh fix so the supervisor
+     * never sees a stale marker during an active shift.
+     */
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+    }
+
+    heartbeatRef.current = setInterval(() => {
+      if (
+        !stillCurrent() ||
+        Date.now() - lastSentAtRef.current < HEARTBEAT_MS
+      ) {
+        return;
+      }
+
+      void Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      })
+        .then((location) => {
+          if (!stillCurrent()) {
+            return;
+          }
+
+          setLastLocation(location);
+          void sendLocation(location);
+        })
+        .catch((err) => {
+          console.warn("[Location] Heartbeat GPS failed:", err);
+        });
+    }, HEARTBEAT_MS);
 
     console.log(
       "[Location] Foreground GPS tracking started",
@@ -481,6 +570,39 @@ useEffect(() => {
     listener.remove();
   };
 }, [startTracking, stopForegroundTracking]);
+
+  /*
+   * Server asks for a fresh fix when this driver's
+   * location went stale on the supervisor map.
+   */
+  useEffect(() => {
+    if (!enabled || !ready) {
+      return;
+    }
+
+    const remove = onLocationRequest(() => {
+      if (
+        !mountedRef.current ||
+        !activeRef.current ||
+        AppState.currentState !== "active"
+      ) {
+        return;
+      }
+
+      void Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      })
+        .then((location) => {
+          setLastLocation(location);
+          void sendLocation(location);
+        })
+        .catch((err) => {
+          console.warn("[Location] Requested GPS failed:", err);
+        });
+    });
+
+    return remove;
+  }, [enabled, ready, sendLocation]);
 
   return {
 

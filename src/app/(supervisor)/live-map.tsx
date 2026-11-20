@@ -25,7 +25,12 @@ import { AppScreen } from "../../components/AppScreen";
 
 import { getMyDriversLocations } from "../../api/locationApi";
 
-import { connectSocket, onDriverLocationUpdate , onSocketConnect } from "../../socket/socket";
+import {
+  connectSocket,
+  onDriverLocationUpdate,
+  onDriverShiftUpdate,
+  onSocketConnect,
+} from "../../socket/socket";
 
 import { getActiveShift } from "../../api/shiftApi";
 import { useAuth } from "../../hooks/useAuth";
@@ -52,6 +57,10 @@ const COLORS = {
 
   success: "#166534",
   successBackground: "#EAF7EE",
+
+  // Working, but GPS has not arrived recently.
+  warning: "#B45309",
+  warningBackground: "#FEF3C7",
 };
 
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
@@ -59,7 +68,13 @@ const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const DEFAULT_CENTER: [number, number] = [46.6753, 24.7136];
 
 const DEFAULT_ZOOM = 10;
+const MIN_ZOOM = 2;
+const MAX_ZOOM = 19;
+
+// Zoom to 90% of the zoom range when a driver is tapped (~17.3).
+const DRIVER_FOCUS_ZOOM = MIN_ZOOM + (MAX_ZOOM - MIN_ZOOM) * 0.9;
 const LOCATION_FRESH_MS = 2 * 60 * 1000;
+const LOCATION_POLL_MS = 30 * 1000;
 
 function locationTime(value?: string | null): number | null {
   if (!value) return null;
@@ -424,6 +439,22 @@ useFocusEffect(
         },
       );
 
+    // SHIFT START / END: update working state instantly.
+    const removeShiftListener =
+      onDriverShiftUpdate((update) => {
+        if (!focused || !update.driverId) return;
+
+        setLiveWorkingStatus((current) => ({
+          ...current,
+          [update.driverId]: update.isWorking,
+        }));
+
+        // Newly working driver may not be on the map yet.
+        if (update.isWorking) {
+          refreshUnknownDriver();
+        }
+      });
+
     // Called on initial connection
     // and after Socket.IO reconnects.
     const removeConnectListener =
@@ -453,10 +484,24 @@ useFocusEffect(
       );
     });
 
+    /*
+     * Fallback refresh in case the socket silently
+     * dropped (network switch, phone asleep) and
+     * live updates were missed.
+     */
+    const pollTimer = setInterval(() => {
+      if (focused) {
+        void loadLocations();
+      }
+    }, LOCATION_POLL_MS);
+
     return () => {
       focused = false;
 
+      clearInterval(pollTimer);
+
       removeLocationListener();
+      removeShiftListener();
       removeConnectListener();
 
       // Shared socket: do not disconnect here.
@@ -565,6 +610,25 @@ useEffect(() => {
   fitAllDrivers,
 ]);
 
+  /*
+   * Zoom closely on a tapped driver.
+   */
+  const focusDriver = useCallback(
+    (driverId: string, longitude: number, latitude: number) => {
+      setSelectedDriverId(driverId);
+
+      // Do not let the initial "fit all" override this.
+      hasInitialFitRef.current = true;
+
+      cameraRef.current?.easeTo?.({
+        center: [longitude, latitude],
+        zoom: DRIVER_FOCUS_ZOOM,
+        duration: 700,
+      });
+    },
+    [],
+  );
+
   const selectedLocation = useMemo(() => {
     if (!selectedDriverId) {
       return null;
@@ -638,8 +702,8 @@ useEffect(() => {
     center: initialCenter,
     zoom: DEFAULT_ZOOM,
   }}
-  minZoom={2}
-  maxZoom={19}
+  minZoom={MIN_ZOOM}
+  maxZoom={MAX_ZOOM}
 />
 
               {validLocations.map((location) => {
@@ -669,7 +733,11 @@ useEffect(() => {
                     onPress={(event) => {
                       event.stopPropagation?.();
 
-                      setSelectedDriverId(driverId);
+                      focusDriver(
+                        driverId,
+                        location.longitude,
+                        location.latitude,
+                      );
                     }}
                   >
                     <View style={styles.markerWrapper}>
@@ -679,7 +747,9 @@ useEffect(() => {
 
                           selected && styles.markerLabelSelected,
 
-                          (!isWorking || !fresh) && styles.markerLabelInactive,
+                          !isWorking && styles.markerLabelInactive,
+
+                          isWorking && !fresh && styles.markerLabelStale,
                         ]}
                       >
                         {/* PHOTO / AVATAR */}
@@ -741,6 +811,8 @@ useEffect(() => {
                           selected && styles.markerPointerSelected,
 
                           !isWorking && styles.markerPointerInactive,
+
+                          isWorking && !fresh && styles.markerPointerStale,
                         ]}
                       />
                     </View>
@@ -936,8 +1008,18 @@ function DriverLocationCard({
         </Pressable>
       </View>
 
-      <Text style={[styles.locationAge, !fresh && styles.locationAgeStale]}>
-        {fresh ? "Live GPS" : "Stale GPS"} · {formatLocationAge(location.recordedAt, now)}
+      <Text
+        style={[
+          styles.locationAge,
+          !fresh && (isWorking ? styles.locationAgeWaiting : styles.locationAgeStale),
+        ]}
+      >
+        {fresh
+          ? "Live GPS"
+          : isWorking
+            ? "Working · waiting for GPS"
+            : "Last known location"}{" "}
+        · {formatLocationAge(location.recordedAt, now)}
       </Text>
 
       <View style={styles.locationRow}>
@@ -1467,6 +1549,14 @@ const styles = StyleSheet.create({
     ],
   },
 
+  markerLabelStale: {
+    borderColor: COLORS.warning,
+  },
+
+  markerPointerStale: {
+    borderTopColor: COLORS.warning,
+  },
+
   markerLabelInactive: {
     borderColor: COLORS.border,
 
@@ -1764,6 +1854,9 @@ const styles = StyleSheet.create({
   },
   locationAgeStale: {
     color: COLORS.error,
+  },
+  locationAgeWaiting: {
+    color: COLORS.warning,
   },
   locationRow: {
     minHeight: 43,

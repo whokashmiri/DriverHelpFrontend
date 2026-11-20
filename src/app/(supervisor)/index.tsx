@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -23,6 +23,14 @@ import { getSupervisorDriversDashboard } from "../../api/statsApi";
 import { AppScreen } from "../../components/AppScreen";
 
 import { useAuth } from "../../hooks/useAuth";
+
+import {
+  connectSocket,
+  onDriverLocationUpdate,
+  onDriverOrderUpdate,
+  onDriverShiftUpdate,
+  onSocketConnect,
+} from "../../socket/socket";
 
 import type { SupervisorDashboardDriverItem } from "../../types/stats";
 
@@ -150,6 +158,10 @@ export default function SupervisorHomeScreen() {
 
   const [error, setError] = useState<string | null>(null);
 
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
   const loadData = useCallback(async () => {
     try {
       setError(null);
@@ -180,6 +192,109 @@ export default function SupervisorHomeScreen() {
     useCallback(() => {
       void loadData();
     }, [loadData]),
+  );
+
+  /*
+   * LIVE UPDATES (same socket as the Live Map).
+   *
+   * - Shift start/end flips "Working" instantly,
+   *   then a debounced refetch syncs totals/times.
+   * - Order changes refetch delivered counts.
+   * - A GPS update means the driver is working.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let focused = true;
+
+      const scheduleRefresh = (delayMs = 800) => {
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+        }
+
+        refreshTimerRef.current = setTimeout(() => {
+          refreshTimerRef.current = null;
+
+          if (focused) {
+            void loadData();
+          }
+        }, delayMs);
+      };
+
+      const setDriverWorking = (driverId: string, isWorking: boolean) => {
+        setDashboardDrivers((current) =>
+          current.map((item) => {
+            if (item.driver._id !== driverId) {
+              return item;
+            }
+
+            if (item.todayWork.workingNow === isWorking) {
+              return item;
+            }
+
+            return {
+              ...item,
+              todayWork: {
+                ...item.todayWork,
+                workingNow: isWorking,
+              },
+            };
+          }),
+        );
+      };
+
+      const removeShift = onDriverShiftUpdate((update) => {
+        if (!focused || !update.driverId) return;
+
+        if (update.driverId === user?.id) {
+          setSupervisorIsWorking(update.isWorking);
+        } else {
+          setDriverWorking(update.driverId, update.isWorking);
+        }
+
+        scheduleRefresh();
+      });
+
+      const removeOrder = onDriverOrderUpdate((update) => {
+        if (!focused || !update.driverId) return;
+
+        if (update.status !== "picked_up") {
+          scheduleRefresh();
+        }
+      });
+
+      const removeLocation = onDriverLocationUpdate((update) => {
+        if (!focused || !update.driverId || !update.isWorking) return;
+
+        if (update.driverId !== user?.id) {
+          setDriverWorking(update.driverId, true);
+        }
+      });
+
+      // Resync after (re)connecting; events may have been missed.
+      const removeConnect = onSocketConnect(() => {
+        if (focused) scheduleRefresh(0);
+      });
+
+      void connectSocket().catch((err) => {
+        console.warn("[Dashboard] Socket connection failed:", err);
+      });
+
+      return () => {
+        focused = false;
+
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = null;
+        }
+
+        removeShift();
+        removeOrder();
+        removeLocation();
+        removeConnect();
+
+        // Shared socket: do not disconnect here.
+      };
+    }, [loadData, user?.id]),
   );
 
  
