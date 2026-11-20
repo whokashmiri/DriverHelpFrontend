@@ -1,19 +1,18 @@
 //services/backgroundLocation.ts
 import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 
-import { getToken } from "../api/client";
+import { API_BASE_URL, getToken } from "../api/client";
 
 export const BACKGROUND_LOCATION_TASK =
   "TOSH_BACKGROUND_LOCATION_TASK";
 
-// Production
-const API_URL ="https://driverhelp.167.71.231.64.nip.io/api";
-
-// Local development:
-// const API_URL = "http://192.168.0.138:9000/api";
-
-const LOCATION_URL = `${API_URL}/locations/me`;
+/*
+ * Same server as the rest of the app:
+ * change SERVER_URL in api/client.ts only.
+ */
+const LOCATION_URL = `${API_BASE_URL}/locations/me`;
 
 const REQUEST_TIMEOUT_MS = 12000;
 const MAX_PENDING_LOCATIONS = 100;
@@ -43,6 +42,9 @@ const pendingLocations: PendingLocation[] = [];
 
 let deliveryPromise: Promise<void> | null = null;
 let trackingStopped = false;
+
+// True once this JS session started the service with current options.
+let configuredThisSession = false;
 
 /*
  * Validate GPS coordinates and timestamp.
@@ -348,6 +350,87 @@ TaskManager.defineTask<BackgroundLocationTaskData>(
 );
 
 /*
+ * SILENT PUSH: "location_request"
+ *
+ * The backend sends a data-only push when this driver's
+ * location is stale during an active shift (e.g. Android
+ * killed the tracking service). Expo wakes the app in the
+ * background, we read GPS once and POST it.
+ */
+export const LOCATION_REQUEST_TASK =
+  "TOSH_LOCATION_REQUEST_TASK";
+
+function isLocationRequestPayload(data: unknown): boolean {
+  try {
+    return JSON.stringify(data ?? "").includes("location_request");
+  } catch {
+    return false;
+  }
+}
+
+async function readFreshPosition():
+  Promise<Location.LocationObject | null> {
+  try {
+    return await Promise.race([
+      Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      }),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), 15000),
+      ),
+    ]);
+  } catch (error) {
+    console.warn("[LocationRequest] Current GPS failed:", error);
+  }
+
+  return null;
+}
+
+export async function handleLocationRequest(): Promise<void> {
+  if (trackingStopped) {
+    return;
+  }
+
+  if (!(await hasAlwaysLocationPermission())) {
+    return;
+  }
+
+  const location =
+    (await readFreshPosition()) ??
+    (await Location.getLastKnownPositionAsync({
+      maxAge: 60000,
+    }).catch(() => null));
+
+  if (!location) {
+    return;
+  }
+
+  enqueueLocations([location]);
+
+  await sendPendingLocations();
+}
+
+TaskManager.defineTask(
+  LOCATION_REQUEST_TASK,
+  async ({ data, error }) => {
+    if (error || !isLocationRequestPayload(data)) {
+      return;
+    }
+
+    await handleLocationRequest();
+  },
+);
+
+void Notifications.registerTaskAsync(LOCATION_REQUEST_TASK).catch(
+  (error) => {
+    console.warn(
+      "[LocationRequest] Unable to register push task:",
+      error,
+    );
+  },
+);
+
+/*
  * PERMISSION HELPERS
  *
  * On Android, request*PermissionsAsync() launches a
@@ -457,7 +540,7 @@ export async function startBackgroundLocationTracking():
       BACKGROUND_LOCATION_TASK,
     );
 
-  if (alreadyStarted) {
+  if (alreadyStarted && configuredThisSession) {
     trackingStopped = false;
     return;
   }
@@ -465,6 +548,19 @@ export async function startBackgroundLocationTracking():
   if (!(await hasAlwaysLocationPermission())) {
     throw new Error(
       "Allow all the time location permission is required",
+    );
+  }
+
+  /*
+   * A service started by an older app version (or before
+   * a JS reload) may still use old options. Restart it once
+   * per session so the current options apply. This only
+   * runs from the foreground, where Android allows
+   * starting a location foreground service.
+   */
+  if (alreadyStarted) {
+    await Location.stopLocationUpdatesAsync(
+      BACKGROUND_LOCATION_TASK,
     );
   }
 
@@ -478,8 +574,16 @@ export async function startBackgroundLocationTracking():
     {
       accuracy: Location.Accuracy.High,
 
+      /*
+       * distanceInterval must be 0: with a distance
+       * filter Android delivers nothing while the
+       * driver is stationary (e.g. waiting at a
+       * pickup), and the supervisor map goes stale.
+       */
       timeInterval: 5000,
-      distanceInterval: 5,
+      distanceInterval: 0,
+
+      activityType: Location.ActivityType.AutomotiveNavigation,
 
       deferredUpdatesInterval: 0,
       deferredUpdatesDistance: 0,
@@ -503,6 +607,7 @@ export async function startBackgroundLocationTracking():
   );
 
   trackingStopped = false;
+  configuredThisSession = true;
 
   console.log(
     "[BackgroundLocation] Tracking started",
@@ -518,6 +623,7 @@ export async function startBackgroundLocationTracking():
 export async function stopBackgroundLocationTracking():
   Promise<void> {
   trackingStopped = true;
+  configuredThisSession = false;
 
   /*
    * Do not replay old shift locations.
