@@ -13,12 +13,21 @@ export const SHIFT_NOTIFICATION_CHANNEL =
  * application is in the foreground.
  */
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    /*
+     * Silent GPS refresh requests from the server
+     * must never be shown to the driver.
+     */
+    const silent =
+      notification.request.content.data?.type === "location_request";
+
+    return {
+      shouldShowBanner: !silent,
+      shouldShowList: !silent,
+      shouldPlaySound: !silent,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 
