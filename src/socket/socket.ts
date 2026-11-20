@@ -2,14 +2,13 @@
 
 import { io, Socket } from "socket.io-client";
 
-import { getToken } from "../api/client";
-
-const SOCKET_URL = "https://driverhelp.167.71.231.64.nip.io";
+import { getToken, SERVER_URL } from "../api/client";
 
 /*
- * Local development:
+ * Single source of truth for the server address:
+ * change SERVER_URL in api/client.ts only.
  */
-// const SOCKET_URL = "http://192.168.0.138:9000";
+const SOCKET_URL = SERVER_URL;
 
 import {
   APP_PLATFORM,
@@ -377,4 +376,62 @@ export function pauseSocket() {
   if (socket) {
     socket.disconnect();
   }
+}
+
+/*
+ * SUPERVISOR:
+ * LIVE SHIFT / ORDER EVENTS
+ */
+export interface DriverShiftUpdate {
+  driverId: string;
+  shiftId: string;
+  isWorking: boolean;
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+export interface DriverOrderUpdate {
+  driverId: string;
+  orderId: string;
+  status: "picked_up" | "delivered" | "cancelled";
+}
+
+export function onDriverShiftUpdate(
+  callback: (update: DriverShiftUpdate) => void,
+) {
+  const instance = createSocket();
+
+  instance.on("driver:shift:update", callback);
+
+  return () => {
+    instance.off("driver:shift:update", callback);
+  };
+}
+
+export function onDriverOrderUpdate(
+  callback: (update: DriverOrderUpdate) => void,
+) {
+  const instance = createSocket();
+
+  instance.on("driver:order:update", callback);
+
+  return () => {
+    instance.off("driver:order:update", callback);
+  };
+}
+
+/*
+ * DRIVER:
+ * Server asks for a fresh GPS fix (location went stale).
+ */
+export function onLocationRequest(
+  callback: (request: { reason?: string }) => void,
+) {
+  const instance = createSocket();
+
+  instance.on("driver:location:request", callback);
+
+  return () => {
+    instance.off("driver:location:request", callback);
+  };
 }
