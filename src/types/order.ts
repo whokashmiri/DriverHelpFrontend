@@ -97,7 +97,11 @@ export interface OrderResponse {
 export interface ActiveOrderResponse {
   success: boolean;
 
+  /** Most recent active order (legacy). */
   order: Order | null;
+
+  /** All active (picked_up) orders, newest first. */
+  orders?: Order[];
 }
 
 export interface OrdersResponse {
