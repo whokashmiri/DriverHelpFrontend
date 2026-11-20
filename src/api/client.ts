@@ -13,12 +13,12 @@ import {
 } from "../services/updateRequired";
 
 // Production:
-export const SERVER_URL =
-  "https://driverhelp.167.71.231.64.nip.io";
+// export const SERVER_URL =
+//   "https://driverhelp.167.71.231.64.nip.io";
 
 // Local development:
-// export const SERVER_URL =
-//   "http://192.168.0.138:9000";
+export const SERVER_URL =
+  "http://192.168.0.138:9000";
 
 export const API_BASE_URL = `${SERVER_URL}/api`;
 
