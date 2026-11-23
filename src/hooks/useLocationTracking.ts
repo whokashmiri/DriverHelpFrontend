@@ -292,8 +292,6 @@ const startTracking = useCallback(async () => {
     return;
   }
 
-  // Foreground GPS is already running. Background access
-  // may have just been granted, so try to start it again.
   if (subscriptionRef.current) {
     startBackgroundTracking(generation);
     return;
@@ -310,7 +308,6 @@ const startTracking = useCallback(async () => {
   try {
     setError(null);
 
-    // The driver screen owns the permission prompts.
     const granted =
       await hasForegroundLocationPermission();
 
@@ -348,12 +345,11 @@ const startTracking = useCallback(async () => {
 
           setLastLocation(location);
 
-          // Send GPS to supervisor through Socket.IO.
+          
           void sendLocation(location);
         },
       );
 
-    // Tracking may have stopped while awaiting subscription.
     if (!stillCurrent()) {
       subscription.remove();
       return;
@@ -362,14 +358,6 @@ const startTracking = useCallback(async () => {
     subscriptionRef.current = subscription;
     setIsTracking(true);
 
-    /*
-     * HEARTBEAT
-     *
-     * Some devices still pause watchPosition callbacks
-     * while the phone is not moving. If nothing was sent
-     * recently, request a fresh fix so the supervisor
-     * never sees a stale marker during an active shift.
-     */
     if (heartbeatRef.current) {
       clearInterval(heartbeatRef.current);
     }
@@ -571,10 +559,7 @@ useEffect(() => {
   };
 }, [startTracking, stopForegroundTracking]);
 
-  /*
-   * Server asks for a fresh fix when this driver's
-   * location went stale on the supervisor map.
-   */
+ 
   useEffect(() => {
     if (!enabled || !ready) {
       return;
